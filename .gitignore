@@ -1,0 +1,36 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Env / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Rust
+target/
+**/*.rs.bk
+
+# Node / frontend (Phase 1+)
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri
+apps/desktop/src-tauri/target/
+
+# Test / local data
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# Hermes local plans may be committed; caches may not
+.hermes/cache/
