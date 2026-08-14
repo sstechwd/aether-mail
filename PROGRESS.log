@@ -1,0 +1,10 @@
+# PROGRESS.log — append-only overnight trail
+
+2026-08-13 23:00  Human: stay local, no GitHub, MVP by morning, keep a log, don't wait.
+2026-08-13 23:00  rustc missing. Node 24 / Python 3.11 / Ollama 0.9.6 / VS 2019 present.
+2026-08-13 23:02  Decision: do NOT fork Thunderbird tonight. Build Thunderbird-shaped 3-pane + Hermes-shaped agent on Vite/React + local Node sidecar. Same UI later drops into Tauri once Rust exists.
+2026-08-13 23:04  apps/api MailStore + fixture (incl. prompt-injection mail) + agent + HTTP API. apps/web 3-pane UI.
+2026-08-13 23:06  npm install. vitest 2 passed. vite/vitest bumped for advisories.
+2026-08-13 23:06  ollama serve already up on 127.0.0.1:11434. mistral present.
+2026-08-13 23:07  API :8787 and UI :5173 running. Agent summarize on m-inject: refused send/delete instruction; model described the phish.
+2026-08-13 23:08  HOWTO-MORNING.md + scripts/start-mvp.bat written.

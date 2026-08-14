@@ -1,31 +1,34 @@
 # Aether Mail
 
-Local-first desktop email client with an optional on-device agent.
+Local-first Thunderbird-shaped mail client with a Hermes-shaped agent.
 
-Thunderbird-shaped mail. Hermes-shaped tools. Your IMAP account, your disk, your keys.
+**Overnight MVP (2026-08-13):** a 3-pane web UI + local API + Ollama `mistral`. Fixture inbox, not live IMAP yet. Long-term stack is still Tauri/Rust (`docs/CONVENTIONS.md`). We did **not** fork Thunderbird source.
 
-**Status:** Phase 0 — planning. No application code yet.
+## Run it
 
-## Read this first
+See [HOWTO-MORNING.md](HOWTO-MORNING.md). Short version:
+
+```bash
+cd C:\Users\Sumo\Documents\aether-mail
+npm run start -w @aether/api
+npm run dev -w @aether/web
+```
+
+Open http://127.0.0.1:5173/
+
+Ask **“status”** tomorrow — answer is [STATUS.md](STATUS.md).
+
+## Docs
 
 | Doc | What it is |
 |---|---|
+| [STATUS.md](STATUS.md) | Overnight log / morning briefing |
 | [VISION.md](VISION.md) | Why this exists |
 | [PRODUCT.md](PRODUCT.md) | What v1 is and is not |
-| [docs/CONVENTIONS.md](docs/CONVENTIONS.md) | **Locked stack, coding rules, security** (binding) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Crates, IPC, threat model |
+| [docs/CONVENTIONS.md](docs/CONVENTIONS.md) | Locked long-term stack |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Target crates / threat model |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Phases 0–8 |
-
-A root `AGENTS.md` will mirror `docs/CONVENTIONS.md` once that filename is approved in the Hermes desktop app.
-
-## Stack (locked)
-
-Tauri 2 + React 19 + TypeScript + Vite + Tailwind. Mail and agent in Rust (`async-imap`, `lettre`, Stalwart MIME, SQLite FTS5, OS keyring). BYOK / Ollama first. Electron is rejected.
 
 ## License
 
-MIT. The open-source client is the product. Paid hosted inference, if it ever exists, is an optional adapter — not a requirement to read or send mail.
-
-## Build
-
-Nothing to build until Phase 1. When that lands, this section will have the exact commands.
+MIT.

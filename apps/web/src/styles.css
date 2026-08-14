@@ -1,0 +1,150 @@
+:root {
+  color-scheme: dark;
+  --bg: #1b1c1a;
+  --panel: #232421;
+  --ink: #ece7d8;
+  --muted: #9a9484;
+  --line: #3a3b36;
+  --accent: #c4a35a;
+  --unread: #d7c389;
+  --danger: #b85c38;
+  --ok: #6f8f5a;
+  font-family: "Segoe UI", "IBM Plex Sans", sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(--ink); }
+
+.shell {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 200px 320px 1fr;
+  grid-template-rows: 56px 1fr;
+  grid-template-areas:
+    "top top top"
+    "folders list read";
+}
+
+.topbar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: #141513;
+}
+
+.brand { display: flex; gap: 10px; align-items: center; min-width: 280px; }
+.brand .mark {
+  width: 32px; height: 32px; display: grid; place-items: center;
+  background: var(--accent); color: #1b1c1a; font-weight: 700;
+}
+.brand strong { display: block; letter-spacing: 0.02em; }
+.brand em { display: block; font-style: normal; color: var(--muted); font-size: 12px; }
+
+.search {
+  flex: 1;
+  max-width: 480px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 8px 10px;
+}
+
+.folders {
+  grid-area: folders;
+  border-right: 1px solid var(--line);
+  padding: 12px 8px;
+  background: #191a17;
+}
+.acct { margin: 0 8px 12px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+.folder {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  padding: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.folder.on { background: #2e2f2a; }
+.counts { display: flex; gap: 8px; color: var(--muted); }
+.counts b { color: var(--unread); }
+
+.list {
+  grid-area: list;
+  border-right: 1px solid var(--line);
+  overflow: auto;
+}
+.row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "from when" "subj subj";
+  gap: 2px 8px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.row.unread .subj { color: var(--unread); font-weight: 650; }
+.row.on { background: #30312c; }
+.from { grid-area: from; font-size: 12px; color: var(--muted); }
+.when { grid-area: when; font-size: 11px; color: var(--muted); }
+.subj { grid-area: subj; }
+
+.read { grid-area: read; overflow: auto; padding: 20px 28px 40px; }
+.headers h1 { margin: 0 0 12px; font-size: 22px; font-weight: 600; }
+.headers p { margin: 4px 0; color: var(--muted); }
+.headers b { color: var(--ink); display: inline-block; width: 48px; }
+.body {
+  white-space: pre-wrap;
+  font-family: "Cambria", "Iowan Old Style", serif;
+  font-size: 16px;
+  line-height: 1.5;
+  background: var(--panel);
+  padding: 16px;
+  border: 1px solid var(--line);
+}
+
+.agent {
+  margin-top: 24px;
+  border: 1px solid var(--line);
+  background: #161714;
+  padding: 12px;
+}
+.agent header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.agent header span { color: var(--muted); font-size: 12px; }
+.actions { margin-left: auto; display: flex; gap: 8px; }
+button {
+  background: #2a2b27;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+button.danger { border-color: var(--danger); color: #f0d2c6; }
+.transcript pre { white-space: pre-wrap; font-family: inherit; }
+.refuse { color: var(--accent); }
+.meta, .hint { color: var(--muted); font-size: 12px; }
+label { display: grid; gap: 6px; margin-top: 12px; color: var(--muted); font-size: 12px; }
+textarea {
+  width: 100%;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 10px;
+  font: inherit;
+}
+.sendrow { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.note { color: var(--accent); font-size: 13px; }
+.error { color: #e08a6a; }
+.empty { color: var(--muted); padding: 16px; }
+.empty.tall { padding: 48px 8px; }
