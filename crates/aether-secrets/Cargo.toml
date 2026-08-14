@@ -1,0 +1,9 @@
+[package]
+name = "aether-secrets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OS keyring wrapper. Tests use an in-memory store."
+
+[dependencies]
+thiserror.workspace = true

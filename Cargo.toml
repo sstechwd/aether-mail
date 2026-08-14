@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/mail-store", "crates/mail-core"]
+members = ["crates/mail-store", "crates/mail-core", "crates/aether-secrets"]
 
 [workspace.package]
 version = "0.1.0"

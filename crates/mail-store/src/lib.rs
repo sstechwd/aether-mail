@@ -44,6 +44,23 @@ pub struct StoredMessage {
     pub body: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Account {
+    pub id: String,
+    pub display_name: String,
+    pub email: String,
+    pub provider: String,
+    pub imap_host: String,
+    pub imap_port: u16,
+    pub imap_tls: String,
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_tls: String,
+    pub username: String,
+    pub secret_ref: String,
+    pub auth_method: String,
+}
+
 pub struct MailStore {
     conn: Connection,
 }
@@ -104,6 +121,21 @@ impl MailStore {
                 INSERT INTO messages_fts(rowid, id, account_id, subject, from_addr, to_addr, body)
                 VALUES (new.rowid, new.id, new.account_id, new.subject, new.from_addr, new.to_addr, new.body);
             END;
+            CREATE TABLE IF NOT EXISTS accounts (
+                id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                imap_host TEXT NOT NULL,
+                imap_port INTEGER NOT NULL,
+                imap_tls TEXT NOT NULL,
+                smtp_host TEXT NOT NULL,
+                smtp_port INTEGER NOT NULL,
+                smtp_tls TEXT NOT NULL,
+                username TEXT NOT NULL,
+                secret_ref TEXT NOT NULL,
+                auth_method TEXT NOT NULL
+            );
             "#,
         )?;
         Ok(())
@@ -208,6 +240,79 @@ impl MailStore {
         let rows = stmt.query_map(params![account_id, phrase], map_message)?;
         rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
     }
+
+    pub fn upsert_account(&self, account: Account) -> Result<()> {
+        self.conn.execute(
+            r#"
+            INSERT INTO accounts (
+                id, display_name, email, provider,
+                imap_host, imap_port, imap_tls,
+                smtp_host, smtp_port, smtp_tls,
+                username, secret_ref, auth_method
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            ON CONFLICT(id) DO UPDATE SET
+                display_name = excluded.display_name,
+                email = excluded.email,
+                provider = excluded.provider,
+                imap_host = excluded.imap_host,
+                imap_port = excluded.imap_port,
+                imap_tls = excluded.imap_tls,
+                smtp_host = excluded.smtp_host,
+                smtp_port = excluded.smtp_port,
+                smtp_tls = excluded.smtp_tls,
+                username = excluded.username,
+                secret_ref = excluded.secret_ref,
+                auth_method = excluded.auth_method
+            "#,
+            params![
+                account.id,
+                account.display_name,
+                account.email,
+                account.provider,
+                account.imap_host,
+                account.imap_port,
+                account.imap_tls,
+                account.smtp_host,
+                account.smtp_port,
+                account.smtp_tls,
+                account.username,
+                account.secret_ref,
+                account.auth_method,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_account(&self, id: &str) -> Result<Option<Account>> {
+        self.conn
+            .query_row(
+                r#"
+                SELECT id, display_name, email, provider,
+                       imap_host, imap_port, imap_tls,
+                       smtp_host, smtp_port, smtp_tls,
+                       username, secret_ref, auth_method
+                FROM accounts WHERE id = ?1
+                "#,
+                params![id],
+                map_account,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn list_accounts(&self) -> Result<Vec<Account>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, display_name, email, provider,
+                   imap_host, imap_port, imap_tls,
+                   smtp_host, smtp_port, smtp_tls,
+                   username, secret_ref, auth_method
+            FROM accounts ORDER BY email
+            "#,
+        )?;
+        let rows = stmt.query_map([], map_account)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+    }
 }
 
 fn map_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
@@ -231,5 +336,23 @@ fn map_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
         date,
         unread: row.get::<_, i64>(7)? != 0,
         body: row.get(8)?,
+    })
+}
+
+fn map_account(row: &rusqlite::Row<'_>) -> rusqlite::Result<Account> {
+    Ok(Account {
+        id: row.get(0)?,
+        display_name: row.get(1)?,
+        email: row.get(2)?,
+        provider: row.get(3)?,
+        imap_host: row.get(4)?,
+        imap_port: row.get(5)?,
+        imap_tls: row.get(6)?,
+        smtp_host: row.get(7)?,
+        smtp_port: row.get(8)?,
+        smtp_tls: row.get(9)?,
+        username: row.get(10)?,
+        secret_ref: row.get(11)?,
+        auth_method: row.get(12)?,
     })
 }

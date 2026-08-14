@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { FIXTURE_ACCOUNT, FIXTURE_MAIL } from "./fixture.js";
 import { runAgent, type AgentSkill } from "./agent.js";
 import { MailStore } from "./store.js";
+import { PROVIDERS } from "./providers.js";
+import { AccountBook } from "./accounts.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -13,6 +15,7 @@ if (store.listFolders(FIXTURE_ACCOUNT.id).length === 0) {
   store.loadFixture(FIXTURE_MAIL);
   store.save();
 }
+const accounts = new AccountBook(path.resolve(here, "../../../data/accounts.json"));
 
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
@@ -95,6 +98,48 @@ const server = http.createServer(async (req, res) => {
         });
       }
       return json(res, 200, { result, draft: drafts.get(message.id) ?? null });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/providers") {
+      return json(res, 200, { providers: PROVIDERS, hosting: false });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/accounts") {
+      return json(res, 200, { accounts: accounts.list() });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/accounts") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as {
+        provider?: string;
+        email?: string;
+        username?: string;
+        password?: string;
+        display_name?: string;
+        imap_host?: string;
+        imap_port?: number;
+        smtp_host?: string;
+        smtp_port?: number;
+      };
+      try {
+        const account = accounts.add({
+          provider: body.provider ?? "custom",
+          email: body.email ?? "",
+          username: body.username,
+          password: body.password,
+          display_name: body.display_name,
+          imap_host: body.imap_host,
+          imap_port: body.imap_port,
+          smtp_host: body.smtp_host,
+          smtp_port: body.smtp_port,
+        });
+        return json(res, 201, {
+          account,
+          probe: "saved locally; IMAP LOGIN probe is the next Rust slice. Password is not in accounts.json.",
+        });
+      } catch (e) {
+        return json(res, 400, { error: "bad_account", message: e instanceof Error ? e.message : String(e) });
+      }
     }
 
     if (req.method === "POST" && url.pathname === "/api/send") {

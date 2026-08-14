@@ -13,3 +13,6 @@
 2026-08-14 08:55  ADR 0001: do not fork Thunderbird. Reuse protocol libraries.
 2026-08-14 08:56  rustup present; rustc 1.97.1 msvc.
 2026-08-14 08:58  crates/mail-store SQLite+FTS5 + crates/mail-core MailSource. cargo test 3 passed.
+
+2026-08-14 09:00  Human: add any email account (gmail/outlook/custom/proton). Client only, no hosting.
+2026-08-14 09:04  PROVIDERS.md + Rust accounts/presets/secrets + Add account UI. IMAP LOGIN probe not wired yet. cargo test 8 + vitest 5.

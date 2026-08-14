@@ -32,6 +32,7 @@
 - Rust workspace: `crates/mail-store` (SQLite + FTS5), `crates/mail-core` (`MailSource` trait + in-memory source)
 - `cargo test`: 3 passed (2 store + 1 source)
 - Next backend slice: IMAP adapter behind `MailSource` (still no Node imapflow)
+- Add-account form + provider presets landed. Live IMAP LOGIN probe is next.
 
 ## Overnight contract
 

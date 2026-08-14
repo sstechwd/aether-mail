@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
 
+type Provider = {
+  id: string;
+  label: string;
+  imap_host: string;
+  imap_port: number;
+  smtp_host: string;
+  smtp_port: number;
+  unsupported: boolean;
+  notes: string;
+};
+type SavedAccount = { id: string; email: string; provider: string; imap_host: string };
 type Folder = { name: string; unread: number; total: number };
 type Message = {
   id: string;
@@ -53,6 +64,14 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sendNote, setSendNote] = useState<string | null>(null);
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [providerId, setProviderId] = useState("gmail");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [imapHost, setImapHost] = useState("");
+  const [accountNote, setAccountNote] = useState<string | null>(null);
 
   async function refreshFolders() {
     const data = await api<{ folders: Folder[] }>("/api/folders");
@@ -66,6 +85,12 @@ export default function App() {
 
   useEffect(() => {
     refreshFolders().catch((e: Error) => setError(e.message));
+    api<{ providers: Provider[] }>("/api/providers")
+      .then((d) => setProviders(d.providers))
+      .catch((e: Error) => setError(e.message));
+    api<{ accounts: SavedAccount[] }>("/api/accounts")
+      .then((d) => setSavedAccounts(d.accounts))
+      .catch((e: Error) => setError(e.message));
   }, []);
 
   useEffect(() => {
@@ -132,6 +157,29 @@ export default function App() {
     }
   }
 
+  const selectedProvider = providers.find((p) => p.id === providerId);
+
+  async function saveAccount() {
+    setAccountNote(null);
+    try {
+      const data = await api<{ account: SavedAccount; probe: string }>("/api/accounts", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: providerId,
+          email,
+          password,
+          imap_host: imapHost || undefined,
+        }),
+      });
+      setPassword("");
+      setSavedAccounts((prev) => [...prev, data.account]);
+      setAdding(false);
+      setAccountNote(data.probe);
+    } catch (e) {
+      setAccountNote(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   return (
     <div className="shell">
       <header className="topbar">
@@ -151,7 +199,44 @@ export default function App() {
       </header>
 
       <aside className="folders">
-        <p className="acct">Local fixture</p>
+        <p className="acct">Accounts</p>
+        <p className="acct-line">Local fixture</p>
+        {savedAccounts.map((a) => (
+          <p key={a.id} className="acct-line">
+            {a.email}
+          </p>
+        ))}
+        <button className="folder" onClick={() => setAdding((v) => !v)}>
+          {adding ? "Close" : "Add account"}
+        </button>
+        {adding ? (
+          <div className="add-acc">
+            <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            {selectedProvider ? <p className="hint">{selectedProvider.notes}</p> : null}
+            <input placeholder="you@domain.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input
+              type="password"
+              placeholder="password or app password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="off"
+            />
+            {providerId === "custom" ? (
+              <input placeholder="imap.example.com" value={imapHost} onChange={(e) => setImapHost(e.target.value)} />
+            ) : null}
+            <button disabled={selectedProvider?.unsupported} onClick={saveAccount}>
+              Save on this machine
+            </button>
+          </div>
+        ) : null}
+        {accountNote ? <p className="hint">{accountNote}</p> : null}
+        <p className="acct">Folders</p>
         {folders.map((f) => (
           <button
             key={f.name}
