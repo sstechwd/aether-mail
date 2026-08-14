@@ -1,0 +1,11 @@
+[package]
+name = "mail-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Local SQLite + FTS5 mail store for Aether Mail"
+
+[dependencies]
+rusqlite.workspace = true
+thiserror.workspace = true
+chrono.workspace = true

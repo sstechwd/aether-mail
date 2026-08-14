@@ -20,11 +20,18 @@
 
 ### What is not done
 
-- Not a Thunderbird source fork (would burn the night)
+- Not a Thunderbird source fork (ADR 0001 — would burn the night)
 - No live IMAP (Thunderbird on this machine has a local IMAP account; credentials were not read)
-- No Tauri/Rust — rustc is not installed
+- Tauri shell not started yet — rustc **is now installed** (1.97.1 MSVC)
 - No GitHub push
 - Root `AGENTS.md` still desktop-gated
+
+## Backend (2026-08-14 morning)
+
+- ADR: `docs/adr/0001-do-not-fork-thunderbird.md`
+- Rust workspace: `crates/mail-store` (SQLite + FTS5), `crates/mail-core` (`MailSource` trait + in-memory source)
+- `cargo test`: 3 passed (2 store + 1 source)
+- Next backend slice: IMAP adapter behind `MailSource` (still no Node imapflow)
 
 ## Overnight contract
 

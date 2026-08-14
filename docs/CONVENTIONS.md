@@ -9,7 +9,7 @@ If a later doc disagrees with this file, this file wins until it is deliberately
 
 **Working product name:** Aether Mail
 **Repo:** `aether-mail`
-**Status:** planning only — no application code until Phase 0 docs are accepted
+**Status:** Phase 1 backend started — Rust crates are the mail core. Overnight Node API is a temporary UI host only.
 
 ---
 

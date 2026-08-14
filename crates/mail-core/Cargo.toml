@@ -1,0 +1,10 @@
+[package]
+name = "mail-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "IMAP/SMTP/MIME types and sync for Aether Mail"
+
+[dependencies]
+thiserror.workspace = true
+chrono.workspace = true

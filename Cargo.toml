@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/mail-store", "crates/mail-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/sstechwd/aether-mail"
+
+[workspace.dependencies]
+rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

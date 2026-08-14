@@ -8,3 +8,8 @@
 2026-08-13 23:06  ollama serve already up on 127.0.0.1:11434. mistral present.
 2026-08-13 23:07  API :8787 and UI :5173 running. Agent summarize on m-inject: refused send/delete instruction; model described the phish.
 2026-08-13 23:08  HOWTO-MORNING.md + scripts/start-mvp.bat written.
+
+2026-08-14 08:54  Human: not a TB fork? solidify backend, GUI later.
+2026-08-14 08:55  ADR 0001: do not fork Thunderbird. Reuse protocol libraries.
+2026-08-14 08:56  rustup present; rustc 1.97.1 msvc.
+2026-08-14 08:58  crates/mail-store SQLite+FTS5 + crates/mail-core MailSource. cargo test 3 passed.
