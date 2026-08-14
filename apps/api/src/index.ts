@@ -1,11 +1,18 @@
 import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { FIXTURE_ACCOUNT, FIXTURE_MAIL } from "./fixture.js";
 import { runAgent, type AgentSkill } from "./agent.js";
 import { MailStore } from "./store.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
-const store = MailStore.openMemory();
-store.loadFixture(FIXTURE_MAIL);
+const here = path.dirname(fileURLToPath(import.meta.url));
+const dataFile = process.env.AETHER_MAIL_FILE ?? path.resolve(here, "../../../data/mail.json");
+const store = MailStore.openFile(dataFile);
+if (store.listFolders(FIXTURE_ACCOUNT.id).length === 0) {
+  store.loadFixture(FIXTURE_MAIL);
+  store.save();
+}
 
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();

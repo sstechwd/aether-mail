@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type Folder = { name: string; unread: number; total: number };
 type Message = {
@@ -87,13 +87,23 @@ export default function App() {
       .catch((e: Error) => setError(e.message));
   }, [selectedId]);
 
-  const visible = useMemo(() => {
-    if (!query.trim()) return messages;
-    const q = query.toLowerCase();
-    return messages.filter((m) =>
-      [m.subject, m.from, m.body].some((f) => f.toLowerCase().includes(q)),
-    );
-  }, [messages, query]);
+  const [hits, setHits] = useState<Message[] | null>(null);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setHits(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      api<{ messages: Message[] }>(`/api/search?q=${encodeURIComponent(q)}`)
+        .then((data) => setHits(data.messages))
+        .catch((e: Error) => setError(e.message));
+    }, 150);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const visible = hits ?? messages;
 
   async function runSkill(skill: "summarize" | "draft-reply") {
     if (!selectedId) return;

@@ -1,3 +1,6 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+
 export type FixtureMessage = {
   id: string;
   accountId: string;
@@ -18,9 +21,37 @@ export type FolderSummary = {
 
 export class MailStore {
   private messages = new Map<string, FixtureMessage>();
+  private filePath: string | null = null;
 
   static openMemory(): MailStore {
     return new MailStore();
+  }
+
+  static openFile(filePath: string): MailStore {
+    const store = new MailStore();
+    store.filePath = filePath;
+    store.loadFromDisk();
+    return store;
+  }
+
+  loadFromDisk(): void {
+    if (!this.filePath) return;
+    try {
+      const raw = readFileSync(this.filePath, "utf8");
+      const rows = JSON.parse(raw) as FixtureMessage[];
+      this.messages.clear();
+      for (const row of rows) this.messages.set(row.id, { ...row });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") throw err;
+    }
+  }
+
+  save(): void {
+    if (!this.filePath) return;
+    mkdirSync(dirname(this.filePath), { recursive: true });
+    const rows = [...this.messages.values()];
+    writeFileSync(this.filePath, JSON.stringify(rows, null, 2), "utf8");
   }
 
   loadFixture(rows: FixtureMessage[]): void {
@@ -58,7 +89,10 @@ export class MailStore {
 
   markRead(id: string): void {
     const found = this.messages.get(id);
-    if (found) found.unread = false;
+    if (found) {
+      found.unread = false;
+      this.save();
+    }
   }
 
   search(accountId: string, query: string): FixtureMessage[] {
