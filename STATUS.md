@@ -50,6 +50,8 @@ Rust missing. Node 24 / Ollama 0.9.6 / VS 2019 BuildTools present. Overnight pat
 | 23:04 | MailStore + fixture + API + 3-pane UI | written |
 | 23:06 | `npm install`, store tests | 2 passed |
 | 23:07 | Servers up; agent summarize on injection mail | HTTP 200, refuse recorded, mistral named the phish |
+| 23:08 | Local commit `04a1e1c` MVP | not pushed |
+| 23:10 | Persist + API search. Tests 3 passed. Commit `efa704d` | API restarted, search?q=invoice works |
 
 ## Next batches (no human needed)
 
