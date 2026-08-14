@@ -33,6 +33,7 @@
 - `cargo test`: 3 passed (2 store + 1 source)
 - Next backend slice: IMAP adapter behind `MailSource` (still no Node imapflow)
 - Add-account form + provider presets landed. Live IMAP LOGIN probe is next.
+- 2026-08-14 security review: `docs/SECURITY.md`. CORS locked; secret_ref stripped. Do not save a real password until keyring+IMAP probe.
 
 ## Overnight contract
 

@@ -6,6 +6,7 @@ import { runAgent, type AgentSkill } from "./agent.js";
 import { MailStore } from "./store.js";
 import { PROVIDERS } from "./providers.js";
 import { AccountBook } from "./accounts.js";
+import { allowOrigin, MAX_BODY_BYTES, publicAccount, rejectCrossSite } from "./security.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -20,14 +21,16 @@ const accounts = new AccountBook(path.resolve(here, "../../../data/accounts.json
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
 
-function json(res: http.ServerResponse, status: number, body: unknown): void {
+function json(res: http.ServerResponse, status: number, body: unknown, origin?: string): void {
   const payload = JSON.stringify(body);
-  res.writeHead(status, {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  });
+  };
+  const allowed = allowOrigin(origin);
+  if (allowed) headers["Access-Control-Allow-Origin"] = allowed;
+  res.writeHead(status, headers);
   res.end(payload);
 }
 
@@ -38,7 +41,17 @@ function notFound(res: http.ServerResponse): void {
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(c as Buffer));
+    let size = 0;
+    req.on("data", (c) => {
+      const buf = c as Buffer;
+      size += buf.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("payload too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(buf);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
@@ -46,7 +59,11 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 
 const server = http.createServer(async (req, res) => {
   if (!req.url || !req.method) return notFound(res);
-  if (req.method === "OPTIONS") return json(res, 204, {});
+  const origin = req.headers.origin;
+  if (rejectCrossSite(origin)) {
+    return json(res, 403, { error: "forbidden_origin" }, origin);
+  }
+  if (req.method === "OPTIONS") return json(res, 204, {}, origin);
 
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
 
@@ -105,7 +122,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/accounts") {
-      return json(res, 200, { accounts: accounts.list() });
+      return json(res, 200, { accounts: accounts.list().map(publicAccount) }, origin);
     }
 
     if (req.method === "POST" && url.pathname === "/api/accounts") {
@@ -134,9 +151,9 @@ const server = http.createServer(async (req, res) => {
           smtp_port: body.smtp_port,
         });
         return json(res, 201, {
-          account,
+          account: publicAccount(account),
           probe: "saved locally; IMAP LOGIN probe is the next Rust slice. Password is not in accounts.json.",
-        });
+        }, origin);
       } catch (e) {
         return json(res, 400, { error: "bad_account", message: e instanceof Error ? e.message : String(e) });
       }

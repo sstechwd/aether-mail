@@ -16,3 +16,5 @@
 
 2026-08-14 09:00  Human: add any email account (gmail/outlook/custom/proton). Client only, no hosting.
 2026-08-14 09:04  PROVIDERS.md + Rust accounts/presets/secrets + Add account UI. IMAP LOGIN probe not wired yet. cargo test 8 + vitest 5.
+
+2026-08-14 09:12  Security review. npm audit 0. Fixed CORS *, stripped secret_ref, body cap. See docs/SECURITY.md.
