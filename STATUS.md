@@ -1,71 +1,44 @@
 # STATUS.md — overnight MVP log
 
 **Owner:** Aether (autonomous). Human is away. Do not wait for the human.
-**Started:** 2026-08-13 23:00 local
-**Target:** clickable MVP by morning 2026-08-14
+**Updated:** 2026-08-15 ~02:33 local
 **Remote:** local only. Do not `git push`.
 
-## Say “status” tomorrow — read this file
+## Say “status” — this file
 
-### What works right now (23:07)
+### MVP verdict
 
-- UI: http://127.0.0.1:5173/  (Vite, running)
-- API: http://127.0.0.1:8787/api/health
-- 3-pane Thunderbird-shaped client with fixture INBOX + Sent
-- Local Ollama `mistral` summarize + draft-reply
-- Prompt-injection fixture is refused (verified: phish mail asked to forward everything; agent flagged it and listed a refuse reason)
-- Confirm send is honest: SMTP not wired (HTTP 409)
-- Tests: `npm run test -w @aether/api` — 2 passed
-- Start: `scripts/start-mvp.bat` or [HOWTO-MORNING.md](HOWTO-MORNING.md)
+**Close for a demoable local client + agent. Not close for daily-driving real Gmail/Outlook.**
 
-### What is not done
+You can: read fixture mail, search, star/archive/trash/unread, compose drafts, keyboard shortcuts, summarize / draft / triage / action-items via local Mistral.  
+You cannot: fetch a live inbox or send SMTP. Do not save a real password until keyring + IMAP probe exist.
 
-- Not a Thunderbird source fork (ADR 0001 — would burn the night)
-- No live IMAP (Thunderbird on this machine has a local IMAP account; credentials were not read)
-- Tauri shell not started yet — rustc **is now installed** (1.97.1 MSVC)
-- No GitHub push
-- Root `AGENTS.md` still desktop-gated
+Comparison: `docs/COMPETITIVE.md`
 
-## Backend (2026-08-14 morning)
+### What works
 
-- ADR: `docs/adr/0001-do-not-fork-thunderbird.md`
-- Rust workspace: `crates/mail-store` (SQLite + FTS5), `crates/mail-core` (`MailSource` trait + in-memory source)
-- `cargo test`: 3 passed (2 store + 1 source)
-- Next backend slice: IMAP adapter behind `MailSource` (still no Node imapflow)
-- Add-account form + provider presets landed. Live IMAP LOGIN probe is next.
-- 2026-08-14 security review: `docs/SECURITY.md`. CORS locked; secret_ref stripped. Do not save a real password until keyring+IMAP probe.
+- UI: http://127.0.0.1:5173/  — restart with `scripts/start-mvp.bat` if down
+- 3-pane + toolbar: New, Star, Archive, Trash, Unread
+- Shortcuts: `c` new, `s` star, `e` archive, `#` trash, `u` unread, `r` draft, `j`/`k` next/prev
+- Agent: Summarize, Draft reply, **Triage** (propose star/archive, you apply), **Action items**
+- Security: CORS locked, `docs/SECURITY.md`
 
-## Overnight contract
+### Not done
 
-A window that looks like Thunderbird (3-pane) and has a Hermes-shaped agent drawer:
+- Live IMAP / OAuth / keyring
+- SMTP send (honest 409)
+- Thunderbird fork (ADR 0001)
+- Calendar / contacts / Exchange
+- GitHub push
 
-1. Launch without extra installs if possible.
-2. Fixture inbox if no credentials.
-3. Folders + list + read.
-4. Summarize + draft via local model.
-5. Send is confirm-only and honest if unwired.
+### Tests this batch
 
-## Constraint 23:00
+- `cargo test` — 9 passed (incl. star/archive/unread)
+- `npm run test -w @aether/api` — 15 passed
+- web production build clean
 
-Rust missing. Node 24 / Ollama 0.9.6 / VS 2019 BuildTools present. Overnight path = Vite/React + Node sidecar. Same UI later drops into Tauri.
+### Next when you return
 
-## Log
-
-| Time | Batch | Result |
-|---|---|---|
-| 23:00 | Human: stay local, MVP by morning | started |
-| 23:00 | Toolchain | Node/npm/Python/Ollama yes. rustc no. TB installed. |
-| 23:02 | Decision: do not fork TB source | logged |
-| 23:04 | MailStore + fixture + API + 3-pane UI | written |
-| 23:06 | `npm install`, store tests | 2 passed |
-| 23:07 | Servers up; agent summarize on injection mail | HTTP 200, refuse recorded, mistral named the phish |
-| 23:08 | Local commit `04a1e1c` MVP | not pushed |
-| 23:10 | Persist + API search. Tests 3 passed. Commit `efa704d` | API restarted, search?q=invoice works |
-
-## Next batches (no human needed)
-
-1. Persist fixture + drafts to `data/`
-2. Search hits the API, not just the open folder
-3. Optional IMAP connect form (password stays in process memory)
-4. rustup install if winget will do it unattended
-5. Keep STATUS.md current
+1. Rust IMAP LOGIN probe + OS keyring (then real accounts)
+2. SMTP send behind confirm
+3. Tauri window now that rustc exists

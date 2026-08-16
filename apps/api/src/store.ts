@@ -10,6 +10,7 @@ export type FixtureMessage = {
   subject: string;
   date: string;
   unread: boolean;
+  starred?: boolean;
   body: string;
 };
 
@@ -40,7 +41,7 @@ export class MailStore {
       const raw = readFileSync(this.filePath, "utf8");
       const rows = JSON.parse(raw) as FixtureMessage[];
       this.messages.clear();
-      for (const row of rows) this.messages.set(row.id, { ...row });
+      for (const row of rows) this.messages.set(row.id, { ...row, starred: row.starred ?? false });
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code !== "ENOENT") throw err;
@@ -56,7 +57,7 @@ export class MailStore {
 
   loadFixture(rows: FixtureMessage[]): void {
     for (const row of rows) {
-      this.messages.set(row.id, { ...row });
+      this.messages.set(row.id, { ...row, starred: row.starred ?? false });
     }
   }
 
@@ -93,6 +94,53 @@ export class MailStore {
       found.unread = false;
       this.save();
     }
+  }
+
+  markUnread(id: string): void {
+    const found = this.messages.get(id);
+    if (found) {
+      found.unread = true;
+      this.save();
+    }
+  }
+
+  setStarred(id: string, starred: boolean): void {
+    const found = this.messages.get(id);
+    if (found) {
+      found.starred = starred;
+      this.save();
+    }
+  }
+
+  move(id: string, folder: string): void {
+    const found = this.messages.get(id);
+    if (found) {
+      found.folder = folder;
+      this.save();
+    }
+  }
+
+  compose(input: {
+    accountId: string;
+    to: string;
+    subject: string;
+    body: string;
+  }): FixtureMessage {
+    const draft: FixtureMessage = {
+      id: `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      accountId: input.accountId,
+      folder: "Drafts",
+      from: "you@localhost",
+      to: input.to,
+      subject: input.subject,
+      date: new Date().toISOString(),
+      unread: false,
+      starred: false,
+      body: input.body,
+    };
+    this.messages.set(draft.id, draft);
+    this.save();
+    return { ...draft };
   }
 
   search(accountId: string, query: string): FixtureMessage[] {

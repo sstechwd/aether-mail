@@ -20,6 +20,7 @@ type Message = {
   subject: string;
   date: string;
   unread: boolean;
+  starred?: boolean;
   body: string;
 };
 type AgentResult = {
@@ -72,6 +73,10 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [imapHost, setImapHost] = useState("");
   const [accountNote, setAccountNote] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
+  const [composeTo, setComposeTo] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
 
   async function refreshFolders() {
     const data = await api<{ folders: Folder[] }>("/api/folders");
@@ -130,7 +135,7 @@ export default function App() {
 
   const visible = hits ?? messages;
 
-  async function runSkill(skill: "summarize" | "draft-reply") {
+  async function runSkill(skill: "summarize" | "draft-reply" | "triage" | "action-items") {
     if (!selectedId) return;
     setBusy(skill);
     setError(null);
@@ -147,6 +152,100 @@ export default function App() {
       setBusy(null);
     }
   }
+
+  async function saveDraft() {
+    setError(null);
+    try {
+      const data = await api<{ message: Message; folders: Folder[] }>("/api/compose", {
+        method: "POST",
+        body: JSON.stringify({ to: composeTo, subject: composeSubject, body: composeBody }),
+      });
+      setFolders(data.folders);
+      setComposing(false);
+      setComposeTo("");
+      setComposeSubject("");
+      setComposeBody("");
+      setFolder("Drafts");
+      setSelectedId(data.message.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function applyMessage(next: Message, foldersNext?: Folder[]) {
+    setSelected(next);
+    if (foldersNext) setFolders(foldersNext);
+    else await refreshFolders().catch(() => undefined);
+    if (next.folder !== folder) {
+      setFolder(next.folder);
+    } else {
+      await refreshMessages(folder).catch(() => undefined);
+    }
+  }
+
+  async function starSelected() {
+    if (!selected) return;
+    const data = await api<{ message: Message }>(`/api/messages/${selected.id}/star`, {
+      method: "POST",
+      body: JSON.stringify({ starred: !selected.starred }),
+    });
+    if (data.message) await applyMessage(data.message);
+  }
+
+  async function moveSelected(dest: "Archive" | "Trash" | "INBOX") {
+    if (!selected) return;
+    const data = await api<{ message: Message; folders: Folder[] }>(`/api/messages/${selected.id}/move`, {
+      method: "POST",
+      body: JSON.stringify({ folder: dest }),
+    });
+    if (data.message) await applyMessage(data.message, data.folders);
+  }
+
+  async function unreadSelected() {
+    if (!selected) return;
+    const data = await api<{ message: Message }>(`/api/messages/${selected.id}/unread`, { method: "POST" });
+    if (data.message) await applyMessage(data.message);
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "c") {
+        e.preventDefault();
+        setComposing(true);
+      }
+      if (!selected) return;
+      if (e.key === "s") {
+        e.preventDefault();
+        starSelected().catch((err: Error) => setError(err.message));
+      }
+      if (e.key === "e") {
+        e.preventDefault();
+        moveSelected("Archive").catch((err: Error) => setError(err.message));
+      }
+      if (e.key === "#") {
+        e.preventDefault();
+        moveSelected("Trash").catch((err: Error) => setError(err.message));
+      }
+      if (e.key === "u") {
+        e.preventDefault();
+        unreadSelected().catch((err: Error) => setError(err.message));
+      }
+      if (e.key === "r") {
+        e.preventDefault();
+        runSkill("draft-reply").catch((err: Error) => setError(err.message));
+      }
+      if (e.key === "j" || e.key === "k") {
+        e.preventDefault();
+        const idx = visible.findIndex((m) => m.id === selected.id);
+        const next = e.key === "j" ? visible[idx + 1] : visible[idx - 1];
+        if (next) setSelectedId(next.id);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   async function confirmSend() {
     setSendNote(null);
@@ -196,6 +295,21 @@ export default function App() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <div className="toolbar">
+          <button onClick={() => setComposing(true)}>New (c)</button>
+          <button disabled={!selected} onClick={() => starSelected().catch((e: Error) => setError(e.message))}>
+            {selected?.starred ? "Unstar (s)" : "Star (s)"}
+          </button>
+          <button disabled={!selected} onClick={() => moveSelected("Archive").catch((e: Error) => setError(e.message))}>
+            Archive (e)
+          </button>
+          <button disabled={!selected} onClick={() => moveSelected("Trash").catch((e: Error) => setError(e.message))}>
+            Trash (#)
+          </button>
+          <button disabled={!selected} onClick={() => unreadSelected().catch((e: Error) => setError(e.message))}>
+            Unread (u)
+          </button>
+        </div>
       </header>
 
       <aside className="folders">
@@ -269,7 +383,10 @@ export default function App() {
               setDraft("");
             }}
           >
-            <span className="from">{m.from.replace(/<[^>]+>/, "").trim()}</span>
+            <span className="from">
+              {m.starred ? "★ " : ""}
+              {m.from.replace(/<[^>]+>/, "").trim()}
+            </span>
             <span className="subj">{m.subject}</span>
             <span className="when">{formatWhen(m.date)}</span>
           </button>
@@ -307,6 +424,12 @@ export default function App() {
                   <button disabled={!!busy} onClick={() => runSkill("draft-reply")}>
                     {busy === "draft-reply" ? "Drafting…" : "Draft reply"}
                   </button>
+                  <button disabled={!!busy} onClick={() => runSkill("triage")}>
+                    {busy === "triage" ? "Triaging…" : "Triage"}
+                  </button>
+                  <button disabled={!!busy} onClick={() => runSkill("action-items")}>
+                    {busy === "action-items" ? "Extracting…" : "Action items"}
+                  </button>
                 </div>
               </header>
               {agent ? (
@@ -320,6 +443,16 @@ export default function App() {
                   <p className="meta">
                     {agent.model} · {agent.proposedActions.map((a) => a.label).join(" · ")}
                   </p>
+                  <div className="actions">
+                    {agent.proposedActions.some((a) => a.type === "propose-star") ? (
+                      <button onClick={() => starSelected().catch((e: Error) => setError(e.message))}>Apply star</button>
+                    ) : null}
+                    {agent.proposedActions.some((a) => a.type === "propose-archive") ? (
+                      <button onClick={() => moveSelected("Archive").catch((e: Error) => setError(e.message))}>
+                        Apply archive
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
                 <p className="hint">Open only if you want help. Summarize or draft — you still hit send.</p>
@@ -339,6 +472,18 @@ export default function App() {
         )}
         {error ? <p className="error">{error}</p> : null}
       </main>
+      {composing ? (
+        <div className="compose">
+          <strong>New message</strong>
+          <input placeholder="To" value={composeTo} onChange={(e) => setComposeTo(e.target.value)} />
+          <input placeholder="Subject" value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} />
+          <textarea rows={8} value={composeBody} onChange={(e) => setComposeBody(e.target.value)} />
+          <div className="sendrow">
+            <button onClick={() => saveDraft()}>Save draft</button>
+            <button onClick={() => setComposing(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

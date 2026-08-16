@@ -20,6 +20,7 @@ fn insert_then_list_inbox_and_search_body() {
             subject: "Analytical Engine".into(),
             date: Utc.with_ymd_and_hms(2026, 8, 13, 10, 0, 0).unwrap(),
             unread: true,
+            starred: false,
             body: "Please review the punch-card sequence.".into(),
         })
         .unwrap();

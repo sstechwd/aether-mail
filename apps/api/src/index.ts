@@ -81,6 +81,45 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { folder, messages: store.listMessages(FIXTURE_ACCOUNT.id, folder) });
     }
 
+    if (req.method === "POST" && url.pathname.endsWith("/star") && url.pathname.startsWith("/api/messages/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/messages/".length, -"/star".length));
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { starred?: boolean };
+      store.setStarred(id, Boolean(body.starred));
+      return json(res, 200, { message: store.getMessage(id) }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname.endsWith("/move") && url.pathname.startsWith("/api/messages/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/messages/".length, -"/move".length));
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { folder?: string };
+      const folder = body.folder === "Trash" || body.folder === "Archive" || body.folder === "INBOX" ? body.folder : "";
+      if (!folder) return json(res, 400, { error: "folder must be INBOX|Archive|Trash" }, origin);
+      store.move(id, folder);
+      return json(res, 200, { message: store.getMessage(id), folders: store.listFolders(FIXTURE_ACCOUNT.id) }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname.endsWith("/unread") && url.pathname.startsWith("/api/messages/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/messages/".length, -"/unread".length));
+      store.markUnread(id);
+      return json(res, 200, { message: store.getMessage(id) }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/compose") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { to?: string; subject?: string; body?: string };
+      if (!body.to || !body.subject) {
+        return json(res, 400, { error: "need to and subject" }, origin);
+      }
+      const message = store.compose({
+        accountId: FIXTURE_ACCOUNT.id,
+        to: body.to,
+        subject: body.subject,
+        body: body.body ?? "",
+      });
+      return json(res, 201, { message, folders: store.listFolders(FIXTURE_ACCOUNT.id) }, origin);
+    }
+
     if (req.method === "GET" && url.pathname.startsWith("/api/messages/")) {
       const id = decodeURIComponent(url.pathname.slice("/api/messages/".length));
       const message = store.getMessage(id);
@@ -98,8 +137,9 @@ const server = http.createServer(async (req, res) => {
       const raw = await readBody(req);
       const body = JSON.parse(raw || "{}") as { messageId?: string; skill?: AgentSkill };
       const message = body.messageId ? store.getMessage(body.messageId) : undefined;
-      if (!message || (body.skill !== "summarize" && body.skill !== "draft-reply")) {
-        return json(res, 400, { error: "need messageId and skill summarize|draft-reply" });
+      const allowed = ["summarize", "draft-reply", "triage", "action-items"];
+      if (!message || !body.skill || !allowed.includes(body.skill)) {
+        return json(res, 400, { error: "need messageId and skill summarize|draft-reply|triage|action-items" });
       }
       const result = await runAgent({
         skill: body.skill,

@@ -18,3 +18,6 @@
 2026-08-14 09:04  PROVIDERS.md + Rust accounts/presets/secrets + Add account UI. IMAP LOGIN probe not wired yet. cargo test 8 + vitest 5.
 
 2026-08-14 09:12  Security review. npm audit 0. Fixed CORS *, stripped secret_ref, body cap. See docs/SECURITY.md.
+
+2026-08-15 02:20  Human: implement popular-client features + agent, check morning.
+2026-08-15 02:33  Star/archive/trash/unread/compose + shortcuts. Agent triage + action-items. cargo 9 / vitest 15 / web build ok.

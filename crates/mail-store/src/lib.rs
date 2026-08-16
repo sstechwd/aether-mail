@@ -28,6 +28,7 @@ pub struct NewMessage {
     pub subject: String,
     pub date: DateTime<Utc>,
     pub unread: bool,
+    pub starred: bool,
     pub body: String,
 }
 
@@ -41,6 +42,7 @@ pub struct StoredMessage {
     pub subject: String,
     pub date: DateTime<Utc>,
     pub unread: bool,
+    pub starred: bool,
     pub body: String,
 }
 
@@ -93,6 +95,7 @@ impl MailStore {
                 subject TEXT NOT NULL,
                 date_utc TEXT NOT NULL,
                 unread INTEGER NOT NULL,
+                starred INTEGER NOT NULL DEFAULT 0,
                 body TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_messages_account_folder
@@ -144,8 +147,8 @@ impl MailStore {
     pub fn upsert_message(&self, msg: NewMessage) -> Result<()> {
         self.conn.execute(
             r#"
-            INSERT INTO messages (id, account_id, folder, from_addr, to_addr, subject, date_utc, unread, body)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            INSERT INTO messages (id, account_id, folder, from_addr, to_addr, subject, date_utc, unread, starred, body)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             ON CONFLICT(id) DO UPDATE SET
                 account_id = excluded.account_id,
                 folder = excluded.folder,
@@ -154,6 +157,7 @@ impl MailStore {
                 subject = excluded.subject,
                 date_utc = excluded.date_utc,
                 unread = excluded.unread,
+                starred = excluded.starred,
                 body = excluded.body
             "#,
             params![
@@ -165,6 +169,7 @@ impl MailStore {
                 msg.subject,
                 msg.date.to_rfc3339(),
                 msg.unread as i64,
+                msg.starred as i64,
                 msg.body,
             ],
         )?;
@@ -196,7 +201,7 @@ impl MailStore {
     pub fn list_messages(&self, account_id: &str, folder: &str) -> Result<Vec<StoredMessage>> {
         let mut stmt = self.conn.prepare(
             r#"
-            SELECT id, account_id, folder, from_addr, to_addr, subject, date_utc, unread, body
+            SELECT id, account_id, folder, from_addr, to_addr, subject, date_utc, unread, starred, body
             FROM messages
             WHERE account_id = ?1 AND folder = ?2
             ORDER BY date_utc DESC
@@ -210,7 +215,7 @@ impl MailStore {
         self.conn
             .query_row(
                 r#"
-                SELECT id, account_id, folder, from_addr, to_addr, subject, date_utc, unread, body
+                SELECT id, account_id, folder, from_addr, to_addr, subject, date_utc, unread, starred, body
                 FROM messages WHERE id = ?1
                 "#,
                 params![id],
@@ -226,10 +231,32 @@ impl MailStore {
         Ok(())
     }
 
+    pub fn mark_unread(&self, id: &str) -> Result<()> {
+        self.conn
+            .execute("UPDATE messages SET unread = 1 WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn set_starred(&self, id: &str, starred: bool) -> Result<()> {
+        self.conn.execute(
+            "UPDATE messages SET starred = ?1 WHERE id = ?2",
+            params![starred as i64, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn move_to(&self, id: &str, folder: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE messages SET folder = ?1 WHERE id = ?2",
+            params![folder, id],
+        )?;
+        Ok(())
+    }
+
     pub fn search(&self, account_id: &str, query: &str) -> Result<Vec<StoredMessage>> {
         let mut stmt = self.conn.prepare(
             r#"
-            SELECT m.id, m.account_id, m.folder, m.from_addr, m.to_addr, m.subject, m.date_utc, m.unread, m.body
+            SELECT m.id, m.account_id, m.folder, m.from_addr, m.to_addr, m.subject, m.date_utc, m.unread, m.starred, m.body
             FROM messages_fts f
             JOIN messages m ON m.rowid = f.rowid
             WHERE f.account_id = ?1 AND messages_fts MATCH ?2
@@ -335,7 +362,8 @@ fn map_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
         subject: row.get(5)?,
         date,
         unread: row.get::<_, i64>(7)? != 0,
-        body: row.get(8)?,
+        starred: row.get::<_, i64>(8)? != 0,
+        body: row.get(9)?,
     })
 }
 
