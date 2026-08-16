@@ -15,9 +15,11 @@ Demoable local client + chat agent. **Not** a daily-driver for live Gmail yet.
 
 ## This burst
 
-- Settings: mail + LLM (`data/llm.json` has no key)
-- `POST /api/agent/chat` multi-turn
-- Tests: vitest **17**, web build clean, commit `see git log`
+- List/search no longer ship message bodies (open-by-id still does)
+- Keyboard listener is one-shot + refs (was rebinding every render)
+- SecretVault LRU max 8 — passwords not an unbounded Map
+- Chat turn cap 1500 chars
+- Notes: `docs/EFFICIENCY.md`
 
 ## Next bursts (still tonight)
 

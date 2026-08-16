@@ -80,7 +80,8 @@ export class MailStore {
   listMessages(accountId: string, folder: string): FixtureMessage[] {
     return [...this.messages.values()]
       .filter((m) => m.accountId === accountId && m.folder === folder)
-      .sort((a, b) => b.date.localeCompare(a.date));
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((m) => ({ ...m, body: "" }));
   }
 
   getMessage(id: string): FixtureMessage | undefined {
@@ -153,6 +154,7 @@ export class MailStore {
           field.toLowerCase().includes(q),
         ),
       )
-      .sort((a, b) => b.date.localeCompare(a.date));
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((m) => ({ ...m, body: "" }));
   }
 }

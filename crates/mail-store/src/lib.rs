@@ -201,7 +201,7 @@ impl MailStore {
     pub fn list_messages(&self, account_id: &str, folder: &str) -> Result<Vec<StoredMessage>> {
         let mut stmt = self.conn.prepare(
             r#"
-            SELECT id, account_id, folder, from_addr, to_addr, subject, date_utc, unread, starred, body
+            SELECT id, account_id, folder, from_addr, to_addr, subject, date_utc, unread, starred, ''
             FROM messages
             WHERE account_id = ?1 AND folder = ?2
             ORDER BY date_utc DESC
@@ -256,7 +256,7 @@ impl MailStore {
     pub fn search(&self, account_id: &str, query: &str) -> Result<Vec<StoredMessage>> {
         let mut stmt = self.conn.prepare(
             r#"
-            SELECT m.id, m.account_id, m.folder, m.from_addr, m.to_addr, m.subject, m.date_utc, m.unread, m.starred, m.body
+            SELECT m.id, m.account_id, m.folder, m.from_addr, m.to_addr, m.subject, m.date_utc, m.unread, m.starred, ''
             FROM messages_fts f
             JOIN messages m ON m.rowid = f.rowid
             WHERE f.account_id = ?1 AND messages_fts MATCH ?2

@@ -34,6 +34,7 @@ fn insert_then_list_inbox_and_search_body() {
     let listed = store.list_messages("fixture", "INBOX").unwrap();
     assert_eq!(listed[0].subject, "Analytical Engine");
     assert!(listed[0].unread);
+    assert!(listed[0].body.is_empty());
 
     store.mark_read("m1").unwrap();
     let again = store.get_message("m1").unwrap().unwrap();

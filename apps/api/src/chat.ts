@@ -17,7 +17,7 @@ export class ChatThread {
   add(role: ChatRole, text: string): void {
     const trimmed = text.trim();
     if (!trimmed) return;
-    this.turns.push({ role, text: trimmed.slice(0, 4000) });
+    this.turns.push({ role, text: trimmed.slice(0, 1500) });
     if (this.turns.length > MAX_TURNS) {
       this.turns = this.turns.slice(-MAX_TURNS);
     }

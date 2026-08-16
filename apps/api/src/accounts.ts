@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { PROVIDERS } from "./providers.js";
+import { SecretVault } from "./vault.js";
 
 export type AccountRecord = {
   id: string;
@@ -18,7 +19,7 @@ export type AccountRecord = {
   auth_method: string;
 };
 
-const secrets = new Map<string, string>();
+const secrets = new SecretVault(8);
 
 export class AccountBook {
   constructor(private filePath: string) {}
@@ -65,7 +66,7 @@ export class AccountBook {
 
     const id = `acc-${Date.now().toString(36)}`;
     const secret_ref = `memory:${id}`;
-    secrets.set(secret_ref, password);
+    secrets.put(secret_ref, password);
 
     const row: AccountRecord = {
       id,

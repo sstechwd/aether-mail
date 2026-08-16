@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Settings from "./Settings";
 import AgentChat from "./AgentChat";
 
@@ -137,6 +137,10 @@ export default function App() {
   }, [query]);
 
   const visible = hits ?? messages;
+  const selectedRef = useRef(selected);
+  const visibleRef = useRef(visible);
+  selectedRef.current = selected;
+  visibleRef.current = visible;
 
   async function runSkill(skill: "summarize" | "draft-reply" | "triage" | "action-items") {
     if (!selectedId) return;
@@ -187,17 +191,19 @@ export default function App() {
   }
 
   async function starSelected() {
-    if (!selected) return;
-    const data = await api<{ message: Message }>(`/api/messages/${selected.id}/star`, {
+    const current = selectedRef.current;
+    if (!current) return;
+    const data = await api<{ message: Message }>(`/api/messages/${current.id}/star`, {
       method: "POST",
-      body: JSON.stringify({ starred: !selected.starred }),
+      body: JSON.stringify({ starred: !current.starred }),
     });
     if (data.message) await applyMessage(data.message);
   }
 
   async function moveSelected(dest: "Archive" | "Trash" | "INBOX") {
-    if (!selected) return;
-    const data = await api<{ message: Message; folders: Folder[] }>(`/api/messages/${selected.id}/move`, {
+    const current = selectedRef.current;
+    if (!current) return;
+    const data = await api<{ message: Message; folders: Folder[] }>(`/api/messages/${current.id}/move`, {
       method: "POST",
       body: JSON.stringify({ folder: dest }),
     });
@@ -205,8 +211,9 @@ export default function App() {
   }
 
   async function unreadSelected() {
-    if (!selected) return;
-    const data = await api<{ message: Message }>(`/api/messages/${selected.id}/unread`, { method: "POST" });
+    const current = selectedRef.current;
+    if (!current) return;
+    const data = await api<{ message: Message }>(`/api/messages/${current.id}/unread`, { method: "POST" });
     if (data.message) await applyMessage(data.message);
   }
 
@@ -214,11 +221,13 @@ export default function App() {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const current = selectedRef.current;
+      const rows = visibleRef.current;
       if (e.key === "c") {
         e.preventDefault();
         setComposing(true);
       }
-      if (!selected) return;
+      if (!current) return;
       if (e.key === "s") {
         e.preventDefault();
         starSelected().catch((err: Error) => setError(err.message));
@@ -241,14 +250,14 @@ export default function App() {
       }
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
-        const idx = visible.findIndex((m) => m.id === selected.id);
-        const next = e.key === "j" ? visible[idx + 1] : visible[idx - 1];
+        const idx = rows.findIndex((m) => m.id === current.id);
+        const next = e.key === "j" ? rows[idx + 1] : rows[idx - 1];
         if (next) setSelectedId(next.id);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, []);
 
   async function confirmSend() {
     setSendNote(null);
