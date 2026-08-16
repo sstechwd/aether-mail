@@ -1,0 +1,142 @@
+import { useEffect, useState } from "react";
+
+type Provider = {
+  id: string;
+  label: string;
+  unsupported: boolean;
+  notes: string;
+  imap_host: string;
+};
+type SavedAccount = { id: string; email: string; provider: string; imap_host: string };
+type Llm = { provider: string; baseUrl: string; model: string; hasKey: boolean };
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+  });
+  const data = (await res.json()) as T & { message?: string; error?: string };
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  return data;
+}
+
+export default function Settings(props: { onClose: () => void }) {
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [accounts, setAccounts] = useState<SavedAccount[]>([]);
+  const [llm, setLlm] = useState<Llm | null>(null);
+  const [providerId, setProviderId] = useState("gmail");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [imapHost, setImapHost] = useState("");
+  const [model, setModel] = useState("mistral");
+  const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:11434");
+  const [apiKey, setApiKey] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<{ providers: Provider[] }>("/api/providers").then((d) => setProviders(d.providers)).catch((e: Error) => setNote(e.message));
+    api<{ accounts: SavedAccount[] }>("/api/accounts").then((d) => setAccounts(d.accounts)).catch((e: Error) => setNote(e.message));
+    api<{ llm: Llm }>("/api/settings/llm")
+      .then((d) => {
+        setLlm(d.llm);
+        setModel(d.llm.model);
+        setBaseUrl(d.llm.baseUrl);
+      })
+      .catch((e: Error) => setNote(e.message));
+  }, []);
+
+  const selected = providers.find((p) => p.id === providerId);
+
+  return (
+    <div className="settings">
+      <header>
+        <strong>Settings</strong>
+        <button onClick={props.onClose}>Close</button>
+      </header>
+      <section>
+        <h2>Mail account</h2>
+        <p className="hint">We are a client. We do not host mail. Use an app password. Live IMAP login is saved locally; probe is still fixture-safe.</p>
+        {accounts.map((a) => (
+          <p key={a.id} className="acct-line">
+            {a.email} · {a.provider} · {a.imap_host}
+          </p>
+        ))}
+        <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+          {providers.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        {selected ? <p className="hint">{selected.notes}</p> : null}
+        <input placeholder="you@domain.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input type="password" placeholder="app password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
+        {providerId === "custom" ? (
+          <input placeholder="imap.example.com" value={imapHost} onChange={(e) => setImapHost(e.target.value)} />
+        ) : null}
+        <button
+          disabled={selected?.unsupported}
+          onClick={() => {
+            setNote(null);
+            api<{ account: SavedAccount; probe: string }>("/api/accounts", {
+              method: "POST",
+              body: JSON.stringify({ provider: providerId, email, password, imap_host: imapHost || undefined }),
+            })
+              .then((d) => {
+                setAccounts((prev) => [...prev, d.account]);
+                setPassword("");
+                setNote(d.probe);
+              })
+              .catch((e: Error) => setNote(e.message));
+          }}
+        >
+          Save mail account on this machine
+        </button>
+      </section>
+      <section>
+        <h2>Agent LLM</h2>
+        <p className="hint">Default is local Ollama. Keys stay in memory, never in llm.json. Lean: 8-turn chat, 256-token cap.</p>
+        <label>
+          Model
+          <input value={model} onChange={(e) => setModel(e.target.value)} />
+        </label>
+        <label>
+          Base URL
+          <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+        </label>
+        <label>
+          API key (optional BYOK)
+          <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" />
+        </label>
+        <button
+          onClick={() => {
+            setNote(null);
+            api<{ llm: Llm }>("/api/settings/llm", {
+              method: "POST",
+              body: JSON.stringify({
+                provider: baseUrl.includes("11434") ? "ollama" : "openai-compatible",
+                baseUrl,
+                model,
+                apiKey: apiKey || undefined,
+              }),
+            })
+              .then((d) => {
+                setLlm(d.llm);
+                setApiKey("");
+                setNote(`LLM saved: ${d.llm.model} @ ${d.llm.baseUrl}`);
+              })
+              .catch((e: Error) => setNote(e.message));
+          }}
+        >
+          Save LLM
+        </button>
+        {llm ? (
+          <p className="hint">
+            Active: {llm.model} · {llm.baseUrl} · key {llm.hasKey ? "set" : "not set"}
+          </p>
+        ) : null}
+      </section>
+      {note ? <p className="note">{note}</p> : null}
+    </div>
+  );
+}

@@ -143,6 +143,35 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
   border: 1px solid var(--line);
 }
 
+.agent-chat {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  background: #141513;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+.agent-chat header { display: flex; gap: 8px; align-items: center; }
+.agent-chat header span { color: var(--muted); font-size: 12px; }
+.turns { max-height: 220px; overflow: auto; display: grid; gap: 8px; }
+.turn { margin: 0; font-size: 14px; }
+.turn.user { color: var(--unread); }
+.chat-input { display: flex; gap: 8px; }
+.chat-input textarea { flex: 1; }
+.settings {
+  position: fixed;
+  inset: 8% 12%;
+  background: #161714;
+  border: 1px solid var(--line);
+  padding: 16px;
+  overflow: auto;
+  z-index: 8;
+  display: grid;
+  gap: 16px;
+}
+.settings header { display: flex; justify-content: space-between; }
+.settings section { display: grid; gap: 8px; }
+.settings h2 { margin: 0; font-size: 16px; }
 .agent {
   margin-top: 24px;
   border: 1px solid var(--line);

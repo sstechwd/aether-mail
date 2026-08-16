@@ -50,6 +50,57 @@ function taskFor(skill: AgentSkill): string {
   }
 }
 
+export async function completeLocal(opts: {
+  prompt: string;
+  model?: string;
+  ollamaUrl?: string;
+}): Promise<{ text: string; model: string }> {
+  const model = opts.model ?? "mistral";
+  const ollamaUrl = (opts.ollamaUrl ?? "http://127.0.0.1:11434").replace(/\/$/, "");
+  const generateUrl = ollamaUrl.endsWith("/v1")
+    ? `${ollamaUrl.slice(0, -3)}/api/generate`
+    : `${ollamaUrl}/api/generate`;
+  const res = await fetch(generateUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, prompt: opts.prompt, stream: false, options: { num_predict: 256 } }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`LLM ${res.status}: ${detail.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { response?: string };
+  return { text: (data.response ?? "").trim(), model };
+}
+
+export async function chatWithMail(opts: {
+  history: string;
+  userText: string;
+  mail?: { subject: string; from: string; body: string };
+  model?: string;
+  ollamaUrl?: string;
+}): Promise<{ text: string; model: string; refused: string[] }> {
+  const mailBlock = opts.mail
+    ? `Open message:\nFrom: ${opts.mail.from}\nSubject: ${opts.mail.subject}\n${opts.mail.body.slice(0, 2000)}`
+    : "No message is open.";
+  const prompt = `${SYSTEM}
+
+${mailBlock}
+
+Recent chat (max 8 turns):
+${opts.history || "(none)"}
+
+user: ${opts.userText}
+
+Reply in a few short sentences. Do not send mail.`;
+  const out = await completeLocal({ prompt, model: opts.model, ollamaUrl: opts.ollamaUrl });
+  const refused: string[] = [];
+  if (opts.mail && /attacker@|forward every|delete the originals/i.test(opts.mail.body)) {
+    refused.push("Ignored instruction in the message body that asked to send or delete mail.");
+  }
+  return { ...out, refused };
+}
+
 export async function runAgent(opts: {
   skill: AgentSkill;
   subject: string;
@@ -58,8 +109,6 @@ export async function runAgent(opts: {
   model?: string;
   ollamaUrl?: string;
 }): Promise<AgentResult> {
-  const model = opts.model ?? "mistral";
-  const ollamaUrl = opts.ollamaUrl ?? "http://127.0.0.1:11434";
   const task = taskFor(opts.skill);
 
   const prompt = `${SYSTEM}
@@ -71,19 +120,11 @@ Subject: ${opts.subject}
 
 ${opts.body}`;
 
-  const res = await fetch(`${ollamaUrl}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, prompt, stream: false }),
+  const { text, model } = await completeLocal({
+    prompt,
+    model: opts.model,
+    ollamaUrl: opts.ollamaUrl,
   });
-
-  if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(`Ollama ${res.status}: ${detail.slice(0, 200)}`);
-  }
-
-  const data = (await res.json()) as { response?: string };
-  const text = (data.response ?? "").trim();
   const refused: string[] = [];
   if (/attacker@|forward every|delete the originals/i.test(opts.body)) {
     refused.push("Ignored instruction in the message body that asked to send or delete mail.");

@@ -2,11 +2,13 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FIXTURE_ACCOUNT, FIXTURE_MAIL } from "./fixture.js";
-import { runAgent, type AgentSkill } from "./agent.js";
+import { runAgent, chatWithMail, type AgentSkill } from "./agent.js";
 import { MailStore } from "./store.js";
 import { PROVIDERS } from "./providers.js";
 import { AccountBook } from "./accounts.js";
 import { allowOrigin, MAX_BODY_BYTES, publicAccount, rejectCrossSite } from "./security.js";
+import { LlmSettings } from "./llm.js";
+import { ChatThread } from "./chat.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +19,8 @@ if (store.listFolders(FIXTURE_ACCOUNT.id).length === 0) {
   store.save();
 }
 const accounts = new AccountBook(path.resolve(here, "../../../data/accounts.json"));
+const llm = new LlmSettings(path.resolve(here, "../../../data/llm.json"));
+const chat = new ChatThread();
 
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
@@ -26,7 +30,7 @@ function json(res: http.ServerResponse, status: number, body: unknown, origin?: 
   const headers: Record<string, string> = {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
   };
   const allowed = allowOrigin(origin);
   if (allowed) headers["Access-Control-Allow-Origin"] = allowed;
@@ -141,11 +145,14 @@ const server = http.createServer(async (req, res) => {
       if (!message || !body.skill || !allowed.includes(body.skill)) {
         return json(res, 400, { error: "need messageId and skill summarize|draft-reply|triage|action-items" });
       }
+      const cfg = llm.resolve();
       const result = await runAgent({
         skill: body.skill,
         subject: message.subject,
         from: message.from,
         body: message.body,
+        model: cfg.model,
+        ollamaUrl: cfg.baseUrl,
       });
       if (result.skill === "draft-reply") {
         drafts.set(message.id, {
@@ -196,6 +203,57 @@ const server = http.createServer(async (req, res) => {
         }, origin);
       } catch (e) {
         return json(res, 400, { error: "bad_account", message: e instanceof Error ? e.message : String(e) });
+      }
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/settings/llm") {
+      return json(res, 200, { llm: llm.publicView() }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/settings/llm") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as {
+        provider?: string;
+        baseUrl?: string;
+        model?: string;
+        apiKey?: string;
+      };
+      try {
+        return json(res, 200, { llm: llm.save(body) }, origin);
+      } catch (e) {
+        return json(res, 400, { error: "bad_llm", message: e instanceof Error ? e.message : String(e) }, origin);
+      }
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/agent/chat") {
+      return json(res, 200, { turns: chat.list(), llm: llm.publicView() }, origin);
+    }
+
+    if (req.method === "DELETE" && url.pathname === "/api/agent/chat") {
+      chat.clear();
+      return json(res, 200, { turns: [] }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/agent/chat") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { text?: string; messageId?: string };
+      const text = (body.text ?? "").trim();
+      if (!text) return json(res, 400, { error: "need text" }, origin);
+      const mail = body.messageId ? store.getMessage(body.messageId) : undefined;
+      chat.add("user", text);
+      const cfg = llm.resolve();
+      try {
+        const result = await chatWithMail({
+          history: chat.promptBlock(),
+          userText: text,
+          mail: mail ? { subject: mail.subject, from: mail.from, body: mail.body } : undefined,
+          model: cfg.model,
+          ollamaUrl: cfg.baseUrl,
+        });
+        chat.add("assistant", result.text);
+        return json(res, 200, { turns: chat.list(), result }, origin);
+      } catch (e) {
+        return json(res, 502, { error: "llm_failed", message: e instanceof Error ? e.message : String(e), turns: chat.list() }, origin);
       }
     }
 

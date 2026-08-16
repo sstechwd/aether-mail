@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import Settings from "./Settings";
+import AgentChat from "./AgentChat";
 
 type Provider = {
   id: string;
@@ -74,6 +76,7 @@ export default function App() {
   const [imapHost, setImapHost] = useState("");
   const [accountNote, setAccountNote] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [composeTo, setComposeTo] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
@@ -309,6 +312,7 @@ export default function App() {
           <button disabled={!selected} onClick={() => unreadSelected().catch((e: Error) => setError(e.message))}>
             Unread (u)
           </button>
+          <button onClick={() => setShowSettings(true)}>Settings</button>
         </div>
       </header>
 
@@ -396,7 +400,10 @@ export default function App() {
 
       <main className="read">
         {!selected ? (
-          <p className="empty tall">Select a message. The agent stays closed until you ask.</p>
+          <>
+            <p className="empty tall">Select a message. Chat still works on whatever you open next.</p>
+            <AgentChat messageId={null} />
+          </>
         ) : (
           <>
             <div className="headers">
@@ -468,6 +475,7 @@ export default function App() {
                 {sendNote ? <span className="note">{sendNote}</span> : null}
               </div>
             </section>
+            <AgentChat messageId={selected.id} />
           </>
         )}
         {error ? <p className="error">{error}</p> : null}
@@ -484,6 +492,7 @@ export default function App() {
           </div>
         </div>
       ) : null}
+      {showSettings ? <Settings onClose={() => setShowSettings(false)} /> : null}
     </div>
   );
 }

@@ -21,3 +21,6 @@
 
 2026-08-15 02:20  Human: implement popular-client features + agent, check morning.
 2026-08-15 02:33  Star/archive/trash/unread/compose + shortcuts. Agent triage + action-items. cargo 9 / vitest 15 / web build ok.
+
+2026-08-15 02:35  Human: settings for mail+LLM, Hermes-shaped lean chat in pane 3, work 8h in bursts.
+2026-08-15 02:40  Settings overlay + LLM settings (key not on disk) + /api/agent/chat (8-turn cap, 256 tokens). UI: Settings + AgentChat.
