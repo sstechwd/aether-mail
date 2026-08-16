@@ -1,44 +1,26 @@
-# STATUS.md — overnight MVP log
+# STATUS.md — overnight log
 
-**Owner:** Aether (autonomous). Human is away. Do not wait for the human.
-**Updated:** 2026-08-15 ~02:33 local
+**Updated:** 2026-08-15 02:40  
 **Remote:** local only. Do not `git push`.
 
-## Say “status” — this file
+## Morning check
 
-### MVP verdict
+1. `scripts\start-mvp.bat` if http://127.0.0.1:5173/ is down  
+2. **Settings** (toolbar) — add mail account + set LLM (Ollama `mistral` default)  
+3. Open a message — pane 3 has **Aether chat** (Enter to send). Lean: 8 turns, 256-token cap. Not a Hermes process.
 
-**Close for a demoable local client + agent. Not close for daily-driving real Gmail/Outlook.**
+## MVP
 
-You can: read fixture mail, search, star/archive/trash/unread, compose drafts, keyboard shortcuts, summarize / draft / triage / action-items via local Mistral.  
-You cannot: fetch a live inbox or send SMTP. Do not save a real password until keyring + IMAP probe exist.
+Demoable local client + chat agent. **Not** a daily-driver for live Gmail yet.
 
-Comparison: `docs/COMPETITIVE.md`
+## This burst
 
-### What works
+- Settings: mail + LLM (`data/llm.json` has no key)
+- `POST /api/agent/chat` multi-turn
+- Tests: vitest **17**, web build clean, commit `see git log`
 
-- UI: http://127.0.0.1:5173/  — restart with `scripts/start-mvp.bat` if down
-- 3-pane + toolbar: New, Star, Archive, Trash, Unread
-- Shortcuts: `c` new, `s` star, `e` archive, `#` trash, `u` unread, `r` draft, `j`/`k` next/prev
-- Agent: Summarize, Draft reply, **Triage** (propose star/archive, you apply), **Action items**
-- Security: CORS locked, `docs/SECURITY.md`
+## Next bursts (still tonight)
 
-### Not done
-
-- Live IMAP / OAuth / keyring
-- SMTP send (honest 409)
-- Thunderbird fork (ADR 0001)
-- Calendar / contacts / Exchange
-- GitHub push
-
-### Tests this batch
-
-- `cargo test` — 9 passed (incl. star/archive/unread)
-- `npm run test -w @aether/api` — 15 passed
-- web production build clean
-
-### Next when you return
-
-1. Rust IMAP LOGIN probe + OS keyring (then real accounts)
-2. SMTP send behind confirm
-3. Tauri window now that rustc exists
+- Rust IMAP LOGIN probe (no real password)
+- Wire keyring crate
+- Keep refining chat

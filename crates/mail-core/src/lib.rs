@@ -1,6 +1,7 @@
 //! Protocol types and a MailSource trait. IMAP/SMTP adapters come next.
 
 pub mod providers;
+pub mod probe;
 
 use chrono::{DateTime, Utc};
 
