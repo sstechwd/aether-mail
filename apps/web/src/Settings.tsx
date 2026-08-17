@@ -32,6 +32,8 @@ export default function Settings(props: { onClose: () => void }) {
   const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:11434");
   const [apiKey, setApiKey] = useState("");
   const [allowCloud, setAllowCloud] = useState(false);
+  const [spoken, setSpoken] = useState("star invoices and archive newsletters");
+  const [rules, setRules] = useState<Array<{ id: string; spoken: string; action: string }>>([]);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,6 +46,9 @@ export default function Settings(props: { onClose: () => void }) {
         setBaseUrl(d.llm.baseUrl);
         setAllowCloud(Boolean(d.llm.allowCloud));
       })
+      .catch((e: Error) => setNote(e.message));
+    api<{ workflows: Array<{ id: string; spoken: string; action: string }> }>("/api/workflows")
+      .then((d) => setRules(d.workflows))
       .catch((e: Error) => setNote(e.message));
   }, []);
 
@@ -152,6 +157,36 @@ export default function Settings(props: { onClose: () => void }) {
             Active: {llm.model} · {llm.baseUrl} · key {llm.hasKey ? "set" : "not set"}
           </p>
         ) : null}
+      </section>
+      <section>
+        <h2>Workflows</h2>
+        <p className="hint">Tell the agent in English. It stars or archives matching mail when it arrives. It will never send, delete, or forward on its own.</p>
+        {rules.map((r) => (
+          <p key={r.id} className="acct-line">
+            {r.action} · {r.spoken}
+          </p>
+        ))}
+        <input value={spoken} onChange={(e) => setSpoken(e.target.value)} placeholder="star invoices" />
+        <button
+          onClick={() => {
+            setNote(null);
+            api<{
+              workflow: { id: string; spoken: string; action: string };
+              workflows?: Array<{ id: string; spoken: string; action: string }>;
+              applied: unknown[];
+            }>("/api/workflows", {
+              method: "POST",
+              body: JSON.stringify({ spoken }),
+            })
+              .then((d) => {
+                setRules((prev) => [...prev, ...(d.workflows ?? (d.workflow ? [d.workflow] : []))]);
+                setNote(`Saved. Applied to ${d.applied.length} existing messages.`);
+              })
+              .catch((e: Error) => setNote(e.message));
+          }}
+        >
+          Teach the agent
+        </button>
       </section>
       {note ? <p className="note">{note}</p> : null}
     </div>

@@ -197,6 +197,10 @@ export class MailStore {
       .sort((a, b) => b.date.localeCompare(a.date))
       .map((m) => ({ ...m, body: "" }));
   }
+
+  idsForAccount(accountId: string): string[] {
+    return [...this.messages.values()].filter((m) => m.accountId === accountId).map((m) => m.id);
+  }
 }
 
 function extractAddress(from: string): string {

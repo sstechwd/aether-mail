@@ -10,6 +10,7 @@ import { allowOrigin, MAX_BODY_BYTES, publicAccount, rejectCrossSite } from "./s
 import { LlmSettings } from "./llm.js";
 import { ChatThread } from "./chat.js";
 import { buildMailCliArgs, runMailCli } from "./mailio.js";
+import { applyWorkflows, compileWorkflows, WorkflowBook } from "./workflows.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -21,12 +22,32 @@ if (store.listFolders(FIXTURE_ACCOUNT.id).length === 0) {
 }
 const accounts = new AccountBook(path.resolve(here, "../../../data/accounts.json"));
 const llm = new LlmSettings(path.resolve(here, "../../../data/llm.json"));
+const workflows = new WorkflowBook(path.resolve(here, "../../../data/workflows.json"));
 const chat = new ChatThread();
 
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
 const pendingSends = new Map<string, { to: string; subject: string; body: string; accountId: string; expires: number }>();
 let activeAccountId = FIXTURE_ACCOUNT.id;
+
+function runWorkflows(accountId: string): Array<{ id: string; apply: string[] }> {
+  const rules = workflows.list();
+  const applied: Array<{ id: string; apply: string[] }> = [];
+  for (const id of store.idsForAccount(accountId)) {
+    const mail = store.getMessage(id);
+    if (!mail) continue;
+    const out = applyWorkflows(rules, {
+      id: mail.id,
+      subject: mail.subject,
+      from: mail.from,
+      body: mail.body,
+    });
+    if (out.apply.includes("star")) store.setStarred(id, true);
+    if (out.apply.includes("archive") && mail.folder === "INBOX") store.move(id, "Archive");
+    if (out.apply.length) applied.push(out);
+  }
+  return applied;
+}
 
 function json(res: http.ServerResponse, status: number, body: unknown, origin?: string): void {
   const payload = JSON.stringify(body);
@@ -344,7 +365,28 @@ const server = http.createServer(async (req, res) => {
       );
       store.save();
       activeAccountId = account.id;
-      return json(res, 200, { folders: store.listFolders(account.id), count: fetched.messages?.length ?? 0 }, origin);
+      const ran = runWorkflows(account.id);
+      return json(res, 200, { folders: store.listFolders(account.id), count: fetched.messages?.length ?? 0, workflows: ran }, origin);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/workflows") {
+      return json(res, 200, { workflows: workflows.publicList() }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/workflows") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { spoken?: string };
+      try {
+        const added = compileWorkflows(body.spoken ?? "").map((rule) => workflows.add(rule));
+        const ran = runWorkflows(activeAccountId);
+        return json(res, 201, {
+          workflow: added[0] ? { id: added[0].id, spoken: added[0].spoken, action: added[0].action } : null,
+          workflows: added.map((r) => ({ id: r.id, spoken: r.spoken, action: r.action })),
+          applied: ran,
+        }, origin);
+      } catch (e) {
+        return json(res, 400, { error: "bad_workflow", message: e instanceof Error ? e.message : String(e) }, origin);
+      }
     }
 
     if (req.method === "POST" && url.pathname === "/api/send") {
