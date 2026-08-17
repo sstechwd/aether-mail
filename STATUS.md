@@ -1,28 +1,38 @@
-# STATUS.md — overnight log
+# STATUS.md — morning briefing
 
-**Updated:** 2026-08-15 02:40  
-**Remote:** local only. Do not `git push`.
+**Updated:** 2026-08-16  
+**HEAD:** about to push `main` to https://github.com/sstechwd/aether-mail  
+**Live right now:** start `scripts\start-mvp.bat` after `cargo build -p aether-cli`
 
-## Morning check
+## What changed (this session)
 
-1. `scripts\start-mvp.bat` if http://127.0.0.1:5173/ is down  
-2. **Settings** (toolbar) — add mail account + set LLM (Ollama `mistral` default)  
-3. Open a message — pane 3 has **Aether chat** (Enter to send). Lean: 8 turns, 256-token cap. Not a Hermes process.
+- OS keyring via Rust `aether-cli` (Windows Credential Manager). Password never in git, never on argv.
+- IMAP LOGIN+LIST + fetch, SMTP send — **Rust only**, TLS required.
+- BYOK OpenAI-compatible models. Cloud requires **allowCloud** in Settings.
+- Two-click Confirm send. Agent cannot confirm.
 
-## MVP
+## How to connect a real account
 
-Demoable local client + chat agent. **Not** a daily-driver for live Gmail yet.
+1. `export PATH="$HOME/.cargo/bin:$PATH" && cargo build -p aether-cli`
+2. Start Ollama if you want local chat; skip if you only test mail.
+3. `scripts\start-mvp.bat` → http://127.0.0.1:5173/
+4. Settings → pick Gmail/Outlook/custom → **app password** (not your main login).
+5. Save. Probe should say IMAP LOGIN+LIST ok.
+6. **Fetch INBOX**.
+7. To send: compose/reply → Confirm send **twice**.
 
-## This burst
+Gmail: Google Account → Security → App passwords.  
+Outlook work tenants often block app passwords (OAuth later).  
+Proton: Proton Bridge only.
 
-- List/search no longer ship message bodies (open-by-id still does)
-- Keyboard listener is one-shot + refs (was rebinding every render)
-- SecretVault LRU max 8 — passwords not an unbounded Map
-- Chat turn cap 1500 chars
-- Notes: `docs/EFFICIENCY.md`
+## Do not
 
-## Next bursts (still tonight)
+- Put your real password in if `aether-cli` is not built.
+- Check allow-cloud unless you want the open message sent to that API.
+- Expect OAuth. App password only.
 
-- Rust IMAP LOGIN probe (no real password)
-- Wire keyring crate
-- Keep refining chat
+## Tests last run
+
+- `cargo test` including OS keyring + TLS policy
+- `vitest` 26 passed
+- web build clean

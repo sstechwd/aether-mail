@@ -2,19 +2,19 @@
 
 Local-first Thunderbird-shaped mail client with a Hermes-shaped agent.
 
-**Overnight MVP (2026-08-13):** a 3-pane web UI + local API + Ollama `mistral`. Fixture inbox, not live IMAP yet. Long-term stack is still Tauri/Rust (`docs/CONVENTIONS.md`). We did **not** fork Thunderbird source.
+**Now:** 3-pane UI + local API + Rust `aether-cli` for IMAP/SMTP/keyring. Fixture inbox still works. Real accounts use an app password stored in Windows Credential Manager. Long-term stack is Tauri/Rust (`docs/CONVENTIONS.md`). We did **not** fork Thunderbird source.
 
 ## Run it
 
-See [HOWTO-MORNING.md](HOWTO-MORNING.md). Short version:
-
 ```bash
-cd C:\Users\Sumo\Documents\aether-mail
+export PATH="$HOME/.cargo/bin:$PATH"
+cargo build -p aether-cli
+# then scripts\start-mvp.bat  or:
 npm run start -w @aether/api
 npm run dev -w @aether/web
 ```
 
-Open http://127.0.0.1:5173/
+Open http://127.0.0.1:5173/ — Settings to add a mail account (app password) or a BYOK model. Cloud models need the allow-cloud checkbox.
 
 Ask **“status”** tomorrow — answer is [STATUS.md](STATUS.md).
 

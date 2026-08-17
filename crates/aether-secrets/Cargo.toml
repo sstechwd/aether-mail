@@ -7,3 +7,4 @@ description = "OS keyring wrapper. Tests use an in-memory store."
 
 [dependencies]
 thiserror.workspace = true
+keyring = { version = "3", features = ["windows-native"] }

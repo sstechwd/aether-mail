@@ -67,6 +67,7 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sendNote, setSendNote] = useState<string | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   const [adding, setAdding] = useState(false);
@@ -294,7 +295,22 @@ export default function App() {
   async function confirmSend() {
     setSendNote(null);
     try {
-      await api("/api/send", { method: "POST", body: JSON.stringify({ messageId: selectedId, draft }) });
+      const data = await api<{ confirmId?: string; sent?: boolean; message?: string; preview?: { to: string; subject: string } }>(
+        "/api/send",
+        {
+          method: "POST",
+          body: JSON.stringify({ messageId: selectedId, draft, confirmId: pendingConfirm }),
+        },
+      );
+      if (data.sent) {
+        setPendingConfirm(null);
+        setSendNote("Sent via SMTP.");
+      } else if (data.confirmId) {
+        setPendingConfirm(data.confirmId);
+        setSendNote(
+          `${data.message ?? "Confirm again to send."}${data.preview ? ` To ${data.preview.to}` : ""}`,
+        );
+      }
     } catch (e) {
       setSendNote(e instanceof Error ? e.message : String(e));
     }

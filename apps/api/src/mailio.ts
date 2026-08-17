@@ -1,0 +1,99 @@
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+export type MailCliAction = "probe" | "fetch" | "send" | "secret-put";
+
+export function buildMailCliArgs(input: {
+  action: MailCliAction;
+  host?: string;
+  port?: number;
+  tls?: string;
+  username?: string;
+  secretRef: string;
+  folder?: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  from?: string;
+  to?: string;
+  subject?: string;
+}): string[] {
+  const args = [input.action, "--secret-ref", input.secretRef];
+  if (input.host) args.push("--host", input.host);
+  if (input.port) args.push("--port", String(input.port));
+  if (input.tls) args.push("--tls", input.tls);
+  if (input.username) args.push("--user", input.username);
+  if (input.folder) args.push("--folder", input.folder);
+  if (input.smtpHost) args.push("--smtp-host", input.smtpHost);
+  if (input.smtpPort) args.push("--smtp-port", String(input.smtpPort));
+  if (input.from) args.push("--from", input.from);
+  if (input.to) args.push("--to", input.to);
+  if (input.subject) args.push("--subject", input.subject);
+  return args;
+}
+
+export function findMailCli(): string | null {
+  if (process.env.AETHER_CLI && existsSync(process.env.AETHER_CLI)) return process.env.AETHER_CLI;
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const root = path.resolve(here, "../../..");
+  const names = process.platform === "win32" ? ["aether-cli.exe"] : ["aether-cli"];
+  for (const profile of ["release", "debug"]) {
+    for (const name of names) {
+      const candidate = path.join(root, "target", profile, name);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+export type MailCliResult = {
+  ok: boolean;
+  error?: string;
+  folders?: string[];
+  messages?: Array<{
+    id: string;
+    folder: string;
+    from: string;
+    to: string;
+    subject: string;
+    date: string;
+    unread: boolean;
+    body: string;
+  }>;
+};
+
+export function runMailCli(args: string[], stdinText?: string): Promise<MailCliResult> {
+  const bin = findMailCli();
+  if (!bin) {
+    return Promise.resolve({
+      ok: false,
+      error: "aether-cli not built. From the repo: cargo build -p aether-cli",
+    });
+  }
+  return new Promise((resolve) => {
+    const child = spawn(bin, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (c) => {
+      stdout += String(c);
+    });
+    child.stderr.on("data", (c) => {
+      stderr += String(c);
+    });
+    child.on("error", (e) => resolve({ ok: false, error: e.message }));
+    child.on("close", () => {
+      const raw = stdout.trim() || stderr.trim();
+      try {
+        const parsed = JSON.parse(raw) as MailCliResult;
+        resolve(parsed);
+      } catch {
+        resolve({ ok: false, error: raw.slice(0, 240) || "mail cli failed" });
+      }
+    });
+    if (stdinText !== undefined) {
+      child.stdin.write(stdinText);
+    }
+    child.stdin.end();
+  });
+}

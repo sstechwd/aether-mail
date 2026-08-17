@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { PROVIDERS } from "./providers.js";
@@ -43,6 +44,10 @@ export class AccountBook {
     return this.read();
   }
 
+  get(id: string): AccountRecord | undefined {
+    return this.read().find((r) => r.id === id);
+  }
+
   add(input: {
     provider: string;
     email: string;
@@ -64,8 +69,8 @@ export class AccountBook {
     const password = input.password ?? "";
     if (!password) throw new Error("need a password or app password (sent only to this machine)");
 
-    const id = `acc-${Date.now().toString(36)}`;
-    const secret_ref = `memory:${id}`;
+    const id = `acc-${randomId()}`;
+    const secret_ref = `keyring:${id}`;
     secrets.put(secret_ref, password);
 
     const row: AccountRecord = {
@@ -93,4 +98,12 @@ export class AccountBook {
 
 export function hasSecret(ref: string): boolean {
   return secrets.has(ref);
+}
+
+export function peekSecret(ref: string): string | undefined {
+  return secrets.get(ref);
+}
+
+function randomId(): string {
+  return randomBytes(8).toString("hex");
 }

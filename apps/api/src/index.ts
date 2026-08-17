@@ -5,10 +5,11 @@ import { FIXTURE_ACCOUNT, FIXTURE_MAIL } from "./fixture.js";
 import { runAgent, chatWithMail, type AgentSkill } from "./agent.js";
 import { MailStore } from "./store.js";
 import { PROVIDERS } from "./providers.js";
-import { AccountBook } from "./accounts.js";
+import { AccountBook, peekSecret } from "./accounts.js";
 import { allowOrigin, MAX_BODY_BYTES, publicAccount, rejectCrossSite } from "./security.js";
 import { LlmSettings } from "./llm.js";
 import { ChatThread } from "./chat.js";
+import { buildMailCliArgs, runMailCli } from "./mailio.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +25,8 @@ const chat = new ChatThread();
 
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
+const pendingSends = new Map<string, { to: string; subject: string; body: string; accountId: string; expires: number }>();
+let activeAccountId = FIXTURE_ACCOUNT.id;
 
 function json(res: http.ServerResponse, status: number, body: unknown, origin?: string): void {
   const payload = JSON.stringify(body);
@@ -77,12 +80,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/folders") {
-      return json(res, 200, { account: FIXTURE_ACCOUNT, folders: store.listFolders(FIXTURE_ACCOUNT.id) });
+      return json(res, 200, { account: { id: activeAccountId }, folders: store.listFolders(activeAccountId) });
     }
 
     if (req.method === "GET" && url.pathname === "/api/messages") {
       const folder = url.searchParams.get("folder") ?? "INBOX";
-      return json(res, 200, { folder, messages: store.listMessages(FIXTURE_ACCOUNT.id, folder) });
+      return json(res, 200, { folder, messages: store.listMessages(activeAccountId, folder) });
     }
 
     if (req.method === "POST" && url.pathname.endsWith("/star") && url.pathname.startsWith("/api/messages/")) {
@@ -173,6 +176,9 @@ const server = http.createServer(async (req, res) => {
         body: message.body,
         model: cfg.model,
         ollamaUrl: cfg.baseUrl,
+        apiKey: cfg.apiKey,
+        provider: cfg.provider,
+        allowCloud: cfg.allowCloud,
       });
       if (result.skill === "draft-reply") {
         drafts.set(message.id, {
@@ -217,9 +223,33 @@ const server = http.createServer(async (req, res) => {
           smtp_host: body.smtp_host,
           smtp_port: body.smtp_port,
         });
+        const password = peekSecret(account.secret_ref) ?? "";
+        const put = await runMailCli(
+          buildMailCliArgs({ action: "secret-put", secretRef: account.secret_ref }),
+          password,
+        );
+        let probeNote = put.ok
+          ? "App password stored in the OS keyring (not in accounts.json)."
+          : `Keyring CLI unavailable (${put.error}). Password is only in this process until restart.`;
+        const probe = await runMailCli(
+          buildMailCliArgs({
+            action: "probe",
+            secretRef: account.secret_ref,
+            host: account.imap_host,
+            port: account.imap_port,
+            tls: account.imap_tls,
+            username: account.username,
+          }),
+        );
+        if (probe.ok) {
+          probeNote += ` IMAP LOGIN+LIST ok (${(probe.folders ?? []).slice(0, 6).join(", ") || "folders"}).`;
+        } else {
+          probeNote += ` IMAP probe failed: ${probe.error}. Account metadata saved; mail not fetched.`;
+        }
         return json(res, 201, {
           account: publicAccount(account),
-          probe: "saved locally; IMAP LOGIN probe is the next Rust slice. Password is not in accounts.json.",
+          probe: probeNote,
+          folders: probe.folders ?? [],
         }, origin);
       } catch (e) {
         return json(res, 400, { error: "bad_account", message: e instanceof Error ? e.message : String(e) });
@@ -237,6 +267,7 @@ const server = http.createServer(async (req, res) => {
         baseUrl?: string;
         model?: string;
         apiKey?: string;
+        allowCloud?: boolean;
       };
       try {
         return json(res, 200, { llm: llm.save(body) }, origin);
@@ -269,6 +300,9 @@ const server = http.createServer(async (req, res) => {
           mail: mail ? { subject: mail.subject, from: mail.from, body: mail.body } : undefined,
           model: cfg.model,
           ollamaUrl: cfg.baseUrl,
+          apiKey: cfg.apiKey,
+          provider: cfg.provider,
+          allowCloud: cfg.allowCloud,
         });
         chat.add("assistant", result.text);
         return json(res, 200, { turns: chat.list(), result }, origin);
@@ -277,11 +311,107 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    if (req.method === "POST" && url.pathname.endsWith("/sync") && url.pathname.startsWith("/api/accounts/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/accounts/".length, -"/sync".length));
+      const account = accounts.get(id);
+      if (!account) return json(res, 404, { error: "unknown_account" }, origin);
+      const fetched = await runMailCli(
+        buildMailCliArgs({
+          action: "fetch",
+          secretRef: account.secret_ref,
+          host: account.imap_host,
+          port: account.imap_port,
+          tls: account.imap_tls,
+          username: account.username,
+          folder: "INBOX",
+        }),
+      );
+      if (!fetched.ok) {
+        return json(res, 502, { error: "fetch_failed", message: fetched.error }, origin);
+      }
+      store.loadFixture(
+        (fetched.messages ?? []).map((m) => ({
+          id: `${account.id}-${m.id}`,
+          accountId: account.id,
+          folder: m.folder || "INBOX",
+          from: m.from,
+          to: m.to,
+          subject: m.subject,
+          date: m.date || new Date().toISOString(),
+          unread: m.unread,
+          body: m.body,
+        })),
+      );
+      store.save();
+      activeAccountId = account.id;
+      return json(res, 200, { folders: store.listFolders(account.id), count: fetched.messages?.length ?? 0 }, origin);
+    }
+
     if (req.method === "POST" && url.pathname === "/api/send") {
-      return json(res, 409, {
-        error: "send_not_wired",
-        message: "Send requires an explicit human confirm and SMTP is not connected in this MVP. Draft is saved locally only.",
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as {
+        confirmId?: string;
+        messageId?: string;
+        to?: string;
+        subject?: string;
+        draft?: { text?: string } | string;
+        accountId?: string;
+      };
+      if (body.confirmId) {
+        const pending = pendingSends.get(body.confirmId);
+        if (!pending || pending.expires < Date.now()) {
+          return json(res, 410, { error: "confirm_expired", message: "Confirm again. Send tokens last 5 minutes." }, origin);
+        }
+        pendingSends.delete(body.confirmId);
+        const account = accounts.get(pending.accountId);
+        if (!account) {
+          return json(res, 400, { error: "no_account", message: "Add a mail account in Settings first." }, origin);
+        }
+        const sent = await runMailCli(
+          buildMailCliArgs({
+            action: "send",
+            secretRef: account.secret_ref,
+            username: account.username,
+            smtpHost: account.smtp_host,
+            smtpPort: account.smtp_port,
+            from: account.email,
+            to: pending.to,
+            subject: pending.subject,
+          }),
+          pending.body,
+        );
+        if (!sent.ok) {
+          return json(res, 502, { error: "smtp_failed", message: sent.error }, origin);
+        }
+        return json(res, 200, { sent: true }, origin);
+      }
+      const text = typeof body.draft === "string" ? body.draft : body.draft?.text ?? "";
+      const src = body.messageId ? store.getMessage(body.messageId) : undefined;
+      const to = (body.to || src?.to || "").trim();
+      const subject = (body.subject || src?.subject || "").trim();
+      if (!to || !text) {
+        return json(res, 400, { error: "need_to_and_body", message: "Need a recipient and a body before confirm." }, origin);
+      }
+      const confirmId = `send-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const accountId = body.accountId || accounts.list()[0]?.id;
+      if (!accountId) {
+        return json(res, 409, {
+          error: "send_not_wired",
+          message: "Add a real mail account in Settings, then Confirm send. SMTP is not available on the fixture inbox.",
+        }, origin);
+      }
+      pendingSends.set(confirmId, {
+        to,
+        subject,
+        body: text,
+        accountId,
+        expires: Date.now() + 5 * 60 * 1000,
       });
+      return json(res, 202, {
+        confirmId,
+        preview: { to, subject },
+        message: "Click Confirm send again to actually deliver. The agent cannot do this for you.",
+      }, origin);
     }
 
     return notFound(res);

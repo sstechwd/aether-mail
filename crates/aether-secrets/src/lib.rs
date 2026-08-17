@@ -48,3 +48,46 @@ impl SecretStore for MemorySecrets {
         Ok(())
     }
 }
+
+/// Windows Credential Manager / macOS Keychain / libsecret.
+pub struct OsSecrets {
+    service: String,
+}
+
+impl OsSecrets {
+    pub fn new(service: impl Into<String>) -> Self {
+        Self {
+            service: service.into(),
+        }
+    }
+}
+
+impl SecretStore for OsSecrets {
+    fn put(&self, secret_ref: &str, secret: &str) -> Result<()> {
+        let entry = keyring::Entry::new(&self.service, secret_ref)
+            .map_err(|e| SecretError::Message(e.to_string()))?;
+        entry
+            .set_password(secret)
+            .map_err(|e| SecretError::Message(e.to_string()))
+    }
+
+    fn get(&self, secret_ref: &str) -> Result<Option<String>> {
+        let entry = keyring::Entry::new(&self.service, secret_ref)
+            .map_err(|e| SecretError::Message(e.to_string()))?;
+        match entry.get_password() {
+            Ok(p) => Ok(Some(p)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(SecretError::Message(e.to_string())),
+        }
+    }
+
+    fn delete(&self, secret_ref: &str) -> Result<()> {
+        let entry = keyring::Entry::new(&self.service, secret_ref)
+            .map_err(|e| SecretError::Message(e.to_string()))?;
+        match entry.delete_credential() {
+            Ok(()) => Ok(()),
+            Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(SecretError::Message(e.to_string())),
+        }
+    }
+}

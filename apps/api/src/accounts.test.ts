@@ -14,7 +14,7 @@ describe("AccountBook", () => {
       password: "not-a-real-secret",
     });
     expect(row.imap_host).toBe("imap.gmail.com");
-    expect(row.secret_ref.startsWith("memory:")).toBe(true);
+    expect(row.secret_ref.startsWith("keyring:")).toBe(true);
     expect(JSON.stringify(book.list())).not.toContain("not-a-real-secret");
   });
 

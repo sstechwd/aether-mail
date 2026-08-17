@@ -50,16 +50,34 @@ function taskFor(skill: AgentSkill): string {
   }
 }
 
+import { assertLlmAllowed, buildOpenAiRequest, isLoopbackLlm } from "./llm-policy.js";
+
 export async function completeLocal(opts: {
   prompt: string;
   model?: string;
   ollamaUrl?: string;
+  apiKey?: string;
+  provider?: "ollama" | "openai-compatible";
+  allowCloud?: boolean;
 }): Promise<{ text: string; model: string }> {
   const model = opts.model ?? "mistral";
-  const ollamaUrl = (opts.ollamaUrl ?? "http://127.0.0.1:11434").replace(/\/$/, "");
-  const generateUrl = ollamaUrl.endsWith("/v1")
-    ? `${ollamaUrl.slice(0, -3)}/api/generate`
-    : `${ollamaUrl}/api/generate`;
+  const baseUrl = (opts.ollamaUrl ?? "http://127.0.0.1:11434").replace(/\/$/, "");
+  assertLlmAllowed({ baseUrl, allowCloud: opts.allowCloud });
+  const useOpenAi =
+    opts.provider === "openai-compatible" || Boolean(opts.apiKey && !isLoopbackLlm(baseUrl));
+  if (useOpenAi) {
+    if (!opts.apiKey) throw new Error("Cloud / OpenAI-compatible models need an API key in Settings");
+    const req = buildOpenAiRequest({ baseUrl, model, apiKey: opts.apiKey, prompt: opts.prompt });
+    const res = await fetch(req.url, {
+      method: "POST",
+      headers: req.headers,
+      body: JSON.stringify(req.body),
+    });
+    if (!res.ok) throw new Error(`LLM ${res.status}: provider rejected the request`);
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    return { text: (data.choices?.[0]?.message?.content ?? "").trim(), model };
+  }
+  const generateUrl = baseUrl.endsWith("/v1") ? `${baseUrl.slice(0, -3)}/api/generate` : `${baseUrl}/api/generate`;
   const res = await fetch(generateUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -79,6 +97,9 @@ export async function chatWithMail(opts: {
   mail?: { subject: string; from: string; body: string };
   model?: string;
   ollamaUrl?: string;
+  apiKey?: string;
+  provider?: "ollama" | "openai-compatible";
+  allowCloud?: boolean;
 }): Promise<{ text: string; model: string; refused: string[] }> {
   const mailBlock = opts.mail
     ? `Open message:\nFrom: ${opts.mail.from}\nSubject: ${opts.mail.subject}\n${opts.mail.body.slice(0, 2000)}`
@@ -93,7 +114,14 @@ ${opts.history || "(none)"}
 user: ${opts.userText}
 
 Reply in a few short sentences. Do not send mail.`;
-  const out = await completeLocal({ prompt, model: opts.model, ollamaUrl: opts.ollamaUrl });
+  const out = await completeLocal({
+    prompt,
+    model: opts.model,
+    ollamaUrl: opts.ollamaUrl,
+    apiKey: opts.apiKey,
+    provider: opts.provider,
+    allowCloud: opts.allowCloud,
+  });
   const refused: string[] = [];
   if (opts.mail && /attacker@|forward every|delete the originals/i.test(opts.mail.body)) {
     refused.push("Ignored instruction in the message body that asked to send or delete mail.");
@@ -108,6 +136,9 @@ export async function runAgent(opts: {
   body: string;
   model?: string;
   ollamaUrl?: string;
+  apiKey?: string;
+  provider?: "ollama" | "openai-compatible";
+  allowCloud?: boolean;
 }): Promise<AgentResult> {
   const task = taskFor(opts.skill);
 
@@ -124,6 +155,9 @@ ${opts.body}`;
     prompt,
     model: opts.model,
     ollamaUrl: opts.ollamaUrl,
+    apiKey: opts.apiKey,
+    provider: opts.provider,
+    allowCloud: opts.allowCloud,
   });
   const refused: string[] = [];
   if (/attacker@|forward every|delete the originals/i.test(opts.body)) {

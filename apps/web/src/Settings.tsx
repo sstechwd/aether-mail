@@ -8,7 +8,7 @@ type Provider = {
   imap_host: string;
 };
 type SavedAccount = { id: string; email: string; provider: string; imap_host: string };
-type Llm = { provider: string; baseUrl: string; model: string; hasKey: boolean };
+type Llm = { provider: string; baseUrl: string; model: string; hasKey: boolean; allowCloud?: boolean };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -31,6 +31,7 @@ export default function Settings(props: { onClose: () => void }) {
   const [model, setModel] = useState("mistral");
   const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:11434");
   const [apiKey, setApiKey] = useState("");
+  const [allowCloud, setAllowCloud] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function Settings(props: { onClose: () => void }) {
         setLlm(d.llm);
         setModel(d.llm.model);
         setBaseUrl(d.llm.baseUrl);
+        setAllowCloud(Boolean(d.llm.allowCloud));
       })
       .catch((e: Error) => setNote(e.message));
   }, []);
@@ -55,10 +57,20 @@ export default function Settings(props: { onClose: () => void }) {
       </header>
       <section>
         <h2>Mail account</h2>
-        <p className="hint">We are a client. We do not host mail. Use an app password. Live IMAP login is saved locally; probe is still fixture-safe.</p>
+        <p className="hint">We are a client. Use a provider app password, not your main login. Password goes to Windows Credential Manager via aether-cli — never into accounts.json or git.</p>
         {accounts.map((a) => (
           <p key={a.id} className="acct-line">
-            {a.email} · {a.provider} · {a.imap_host}
+            {a.email} · {a.provider} · {a.imap_host}{" "}
+            <button
+              onClick={() => {
+                setNote(null);
+                api<{ count: number }>(`/api/accounts/${a.id}/sync`, { method: "POST" })
+                  .then((d) => setNote(`Fetched ${d.count} messages into the local store.`))
+                  .catch((e: Error) => setNote(e.message));
+              }}
+            >
+              Fetch INBOX
+            </button>
           </p>
         ))}
         <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
@@ -108,6 +120,10 @@ export default function Settings(props: { onClose: () => void }) {
           API key (optional BYOK)
           <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" />
         </label>
+        <label>
+          <input type="checkbox" checked={allowCloud} onChange={(e) => setAllowCloud(e.target.checked)} />
+          Allow a non-localhost model (sends the open message to that URL)
+        </label>
         <button
           onClick={() => {
             setNote(null);
@@ -118,6 +134,7 @@ export default function Settings(props: { onClose: () => void }) {
                 baseUrl,
                 model,
                 apiKey: apiKey || undefined,
+                allowCloud,
               }),
             })
               .then((d) => {
