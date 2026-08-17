@@ -57,13 +57,13 @@ The agent is a **drawer**, not the home screen. A user who never opens it still 
 - Required signup
 - Pixel-perfect clone of Gmail or Superhuman
 
-## Monetization (not in v1 binary)
+## Monetization (not in the v1 binary)
 
-Documented now so we do not paint ourselves into a corner:
+See `docs/MONETIZATION.md`. Short version: **Hermes-shaped.** The client is MIT and complete. People pay only if they want *us* to run a model (or later sync/skills). We will not charge for the app *and* make them buy OpenAI.
 
-- OSS client is complete.
-- Later optional account for: hosted inference, premium skills, priority support, optional e2e sync.
-- Implementation pattern when we get there: a thin paid adapter crate that the MIT build does not need to compile.
+- OSS: IMAP/SMTP, search, send, BYOK, Ollama
+- Aether+: optional hosted models, one subscription, disclosed meter
+- Paid code lives in a crate the MIT build does not link
 
 ## Naming, license, distribution
 
