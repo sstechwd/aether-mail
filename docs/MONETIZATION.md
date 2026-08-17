@@ -40,6 +40,26 @@ Two implementation options when we flip it on (not now):
 
 Never required to fetch or send.
 
+## Where the model actually runs
+
+We do **not** buy NVIDIA boxes for v1 money.
+
+| Path | Where tokens are computed | Who pays |
+|---|---|---|
+| Ollama / llama.cpp | User's PC | Nobody (electricity) |
+| BYOK OpenAI / Anthropic / OpenRouter / etc. | That lab's cloud | User → lab |
+| **Aether+** | Still a lab's cloud. We are a **billed proxy** (OpenRouter first, own endpoint later) | User → us → lab. One bill. |
+
+Hermes / Nous Portal is this pattern: MIT agent, optional subscription that proxies 300+ models + tools behind one login. The CLI works without paying Nous.
+
+Reselling is legal **if** the upstream ToS allows a reseller/proxy (OpenRouter is built for this). Direct Anthropic/OpenAI keys often **forbid** "buy tokens and sell them as your product" without a partnership. So Aether+ goes through a reseller API or a signed contract, never a scraped personal key.
+
+We never host the mailbox to "run the model closer to the data." Inference sees snippets the user opted to send (`allowCloud`).
+
+## Videos / selling the company
+
+Content can *find* users. It is not the business. A one-time Microsoft Store price is a bad fit next to free Thunderbird. Recurring Aether+ is the business. Selling the company after a YouTube spike, with no paying Aether+ users, is selling a demo.
+
 ## Why not “paid app, BYOK models”
 
 That is two bills and it trains users to resent us. Superhuman can do it because they sell speed and taste to people who already pay for everything. We are selling *trust*. Trust dies if “send” or “search” is behind a paywall.
