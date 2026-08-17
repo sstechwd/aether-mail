@@ -109,6 +109,26 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { message: store.getMessage(id) }, origin);
     }
 
+    if (req.method === "POST" && url.pathname.endsWith("/reply") && url.pathname.startsWith("/api/messages/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/messages/".length, -"/reply".length));
+      try {
+        const message = store.reply(id);
+        return json(res, 201, { message, folders: store.listFolders(FIXTURE_ACCOUNT.id) }, origin);
+      } catch (e) {
+        return json(res, 404, { error: e instanceof Error ? e.message : String(e) }, origin);
+      }
+    }
+
+    if (req.method === "POST" && url.pathname.endsWith("/forward") && url.pathname.startsWith("/api/messages/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/messages/".length, -"/forward".length));
+      try {
+        const message = store.forward(id);
+        return json(res, 201, { message, folders: store.listFolders(FIXTURE_ACCOUNT.id) }, origin);
+      } catch (e) {
+        return json(res, 404, { error: e instanceof Error ? e.message : String(e) }, origin);
+      }
+    }
+
     if (req.method === "POST" && url.pathname === "/api/compose") {
       const raw = await readBody(req);
       const body = JSON.parse(raw || "{}") as { to?: string; subject?: string; body?: string };

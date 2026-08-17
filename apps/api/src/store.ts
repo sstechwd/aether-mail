@@ -74,12 +74,27 @@ export class MailStore {
       if (msg.unread) current.unread += 1;
       byFolder.set(msg.folder, current);
     }
-    return [...byFolder.values()].sort((a, b) => a.name.localeCompare(b.name));
+    let starredUnread = 0;
+    let starredTotal = 0;
+    for (const msg of this.messages.values()) {
+      if (msg.accountId !== accountId || !msg.starred) continue;
+      starredTotal += 1;
+      if (msg.unread) starredUnread += 1;
+    }
+    const folders = [...byFolder.values()].sort((a, b) => a.name.localeCompare(b.name));
+    if (starredTotal > 0) {
+      folders.unshift({ name: "Starred", unread: starredUnread, total: starredTotal });
+    }
+    return folders;
   }
 
   listMessages(accountId: string, folder: string): FixtureMessage[] {
     return [...this.messages.values()]
-      .filter((m) => m.accountId === accountId && m.folder === folder)
+      .filter((m) => {
+        if (m.accountId !== accountId) return false;
+        if (folder === "Starred") return Boolean(m.starred);
+        return m.folder === folder;
+      })
       .sort((a, b) => b.date.localeCompare(a.date))
       .map((m) => ({ ...m, body: "" }));
   }
@@ -144,6 +159,31 @@ export class MailStore {
     return { ...draft };
   }
 
+  reply(id: string): FixtureMessage {
+    const src = this.messages.get(id);
+    if (!src) throw new Error("message not found");
+    const addr = extractAddress(src.from);
+    const subject = src.subject.startsWith("Re:") ? src.subject : `Re: ${src.subject}`;
+    return this.compose({
+      accountId: src.accountId,
+      to: addr,
+      subject,
+      body: `\n\nOn ${src.date}, ${src.from} wrote:\n> ${src.body.replace(/\n/g, "\n> ")}`,
+    });
+  }
+
+  forward(id: string): FixtureMessage {
+    const src = this.messages.get(id);
+    if (!src) throw new Error("message not found");
+    const subject = src.subject.startsWith("Fwd:") ? src.subject : `Fwd: ${src.subject}`;
+    return this.compose({
+      accountId: src.accountId,
+      to: "",
+      subject,
+      body: `\n\n---------- Forwarded message ----------\nFrom: ${src.from}\nDate: ${src.date}\nSubject: ${src.subject}\n\n${src.body}`,
+    });
+  }
+
   search(accountId: string, query: string): FixtureMessage[] {
     const q = query.trim().toLowerCase();
     if (!q) return [];
@@ -157,4 +197,9 @@ export class MailStore {
       .sort((a, b) => b.date.localeCompare(a.date))
       .map((m) => ({ ...m, body: "" }));
   }
+}
+
+function extractAddress(from: string): string {
+  const angle = from.match(/<([^>]+)>/);
+  return (angle?.[1] ?? from).trim();
 }

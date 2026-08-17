@@ -217,6 +217,34 @@ export default function App() {
     if (data.message) await applyMessage(data.message);
   }
 
+  async function replySelected() {
+    const current = selectedRef.current;
+    if (!current) return;
+    const data = await api<{ message: Message; folders: Folder[] }>(`/api/messages/${current.id}/reply`, {
+      method: "POST",
+    });
+    if (data.message) {
+      setFolders(data.folders);
+      setFolder("Drafts");
+      setSelectedId(data.message.id);
+      setDraft(data.message.body);
+    }
+  }
+
+  async function forwardSelected() {
+    const current = selectedRef.current;
+    if (!current) return;
+    const data = await api<{ message: Message; folders: Folder[] }>(`/api/messages/${current.id}/forward`, {
+      method: "POST",
+    });
+    if (data.message) {
+      setFolders(data.folders);
+      setFolder("Drafts");
+      setSelectedId(data.message.id);
+      setDraft(data.message.body);
+    }
+  }
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement | null)?.tagName;
@@ -247,6 +275,10 @@ export default function App() {
       if (e.key === "r") {
         e.preventDefault();
         runSkill("draft-reply").catch((err: Error) => setError(err.message));
+      }
+      if (e.key === "f") {
+        e.preventDefault();
+        forwardSelected().catch((err: Error) => setError(err.message));
       }
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
@@ -317,6 +349,12 @@ export default function App() {
           </button>
           <button disabled={!selected} onClick={() => moveSelected("Trash").catch((e: Error) => setError(e.message))}>
             Trash (#)
+          </button>
+          <button disabled={!selected} onClick={() => replySelected().catch((e: Error) => setError(e.message))}>
+            Reply
+          </button>
+          <button disabled={!selected} onClick={() => forwardSelected().catch((e: Error) => setError(e.message))}>
+            Forward (f)
           </button>
           <button disabled={!selected} onClick={() => unreadSelected().catch((e: Error) => setError(e.message))}>
             Unread (u)

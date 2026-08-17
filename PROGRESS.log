@@ -26,3 +26,5 @@
 2026-08-15 02:40  Settings overlay + LLM settings (key not on disk) + /api/agent/chat (8-turn cap, 256 tokens). UI: Settings + AgentChat.
 
 2026-08-15 16:48  Efficiency pass: envelope-only lists, LRU secret vault, one keyboard listener. cargo 10 / vitest 19.
+
+2026-08-15 18:17  Human: test then add features. Suite green. Added reply/forward + Starred virtual folder.
