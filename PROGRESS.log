@@ -56,3 +56,5 @@
 2026-08-17 21:16  Still not a daily Gmail driver (no OAuth, no .exe, phone = browser). Did not push.
 
 2026-08-17 21:32  Sibyl Memory (official SDK, local SQLite). Chat remember / recall. vitest 46.
+
+2026-08-18  Theme library (retro/modern), chat dots + token bar, chat turns capped 600 chars.

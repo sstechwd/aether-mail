@@ -17,12 +17,23 @@ export default function AgentChat(props: { messageId: string | null }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [usage, setUsage] = useState({ lastCompletion: 0, cap: 80, promptTokens: 0 });
 
   useEffect(() => {
     api<{ turns: Turn[] }>("/api/agent/chat")
       .then((d) => setTurns(d.turns))
       .catch((e: Error) => setErr(e.message));
   }, []);
+
+  useEffect(() => {
+    if (!busy) return;
+    const id = setInterval(() => {
+      api<{ lastCompletion: number; cap: number; promptTokens: number }>("/api/usage")
+        .then(setUsage)
+        .catch(() => undefined);
+    }, 400);
+    return () => clearInterval(id);
+  }, [busy]);
 
   async function send() {
     const q = text.trim();
@@ -36,6 +47,9 @@ export default function AgentChat(props: { messageId: string | null }) {
         body: JSON.stringify({ text: q, messageId: props.messageId }),
       });
       setTurns(data.turns);
+      api<{ lastCompletion: number; cap: number; promptTokens: number }>("/api/usage")
+        .then(setUsage)
+        .catch(() => undefined);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -67,8 +81,19 @@ export default function AgentChat(props: { messageId: string | null }) {
             <b>{t.role === "user" ? "You" : "Aether"}</b> {t.text}
           </p>
         ))}
+        {busy ? (
+          <p className="turn bot chat-wait" aria-live="polite">
+            <b>Aether</b> <span className="dots" />
+          </p>
+        ) : null}
       </div>
       {err ? <p className="error">{err}</p> : null}
+      <div className="token-bar" title={`${usage.lastCompletion}/${usage.cap} completion tokens · ~${usage.promptTokens} prompt`}>
+        <i style={{ width: `${Math.min(100, (usage.lastCompletion / Math.max(1, usage.cap)) * 100)}%` }} />
+        <em>
+          {busy ? "generating…" : `${usage.lastCompletion}/${usage.cap} tok`}
+        </em>
+      </div>
       <div className="chat-input">
         <textarea
           rows={2}

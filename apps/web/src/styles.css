@@ -1,7 +1,8 @@
 /* Aether Mail — night-olive operate theme
    Tokens + rationale: docs/ui-agent/NOTES.md */
 
-:root {
+:root,
+:root[data-theme="retro"] {
   color-scheme: dark;
 
   --bg: #10140f;
@@ -39,6 +40,33 @@
   font-family: var(--sans);
   font-size: 13px;
   line-height: 1.4;
+}
+
+:root[data-theme="modern"] {
+  color-scheme: dark;
+  --bg: #0e1116;
+  --bg-raised: #141922;
+  --panel: #1a2130;
+  --panel-2: #222b3c;
+  --chrome: #0a0d12;
+  --ink: #eef2f7;
+  --ink-soft: #c5cedb;
+  --muted: #8b97a8;
+  --faint: #5c6778;
+  --line: #2a3344;
+  --line-strong: #3d4a60;
+  --accent: #5b8def;
+  --accent-soft: #8eb0f5;
+  --accent-dim: #3a5aa0;
+  --unread: #9ec0ff;
+  --select: #1c2a44;
+  --hover: #182033;
+  --danger: #e05a5a;
+  --danger-ink: #ffd0d0;
+  --ok: #5dba8c;
+  --focus: #8eb0f5;
+  --shadow: 0 18px 48px rgba(4, 8, 16, 0.55);
+  --serif: var(--sans);
 }
 
 * { box-sizing: border-box; }
@@ -1103,6 +1131,40 @@ input[type="checkbox"] {
   opacity: 0.45;
   cursor: default;
 }
+
+.token-bar {
+  position: relative;
+  height: 16px;
+  margin: 4px 8px 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.token-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  width: 0;
+}
+.token-bar em {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-style: normal;
+  font-family: var(--mono);
+  color: var(--ink);
+}
+.dots::after {
+  content: "· · ·";
+  animation: dots 1s steps(3, end) infinite;
+}
+@keyframes dots {
+  0% { content: "·"; }
+  33% { content: "· ·"; }
+  66% { content: "· · ·"; }
+}
+.theme-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
 @media (prefers-reduced-motion: reduce) {
   *,

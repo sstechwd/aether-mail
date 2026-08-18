@@ -51,6 +51,7 @@ function taskFor(skill: AgentSkill): string {
 }
 
 import { assertLlmAllowed, buildOpenAiRequest, isLoopbackLlm } from "./llm-policy.js";
+import { estimateTokens, recordUsage } from "./usage.js";
 
 export function buildOllamaGenerateBody(opts: { model: string; prompt: string }): {
   model: string;
@@ -91,7 +92,9 @@ export async function completeLocal(opts: {
     });
     if (!res.ok) throw new Error(`LLM ${res.status}: provider rejected the request`);
     const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    return { text: (data.choices?.[0]?.message?.content ?? "").trim(), model };
+    const text = (data.choices?.[0]?.message?.content ?? "").trim();
+    recordUsage({ promptChars: opts.prompt.length, completion: estimateTokens(text), cap: 80 });
+    return { text, model };
   }
   const generateUrl = baseUrl.endsWith("/v1") ? `${baseUrl.slice(0, -3)}/api/generate` : `${baseUrl}/api/generate`;
   let res: Response;
@@ -113,8 +116,10 @@ export async function completeLocal(opts: {
     const detail = await res.text();
     throw new Error(`LLM ${res.status}: ${detail.slice(0, 200)}`);
   }
-  const data = (await res.json()) as { response?: string };
-  return { text: (data.response ?? "").trim(), model };
+  const data = (await res.json()) as { response?: string; eval_count?: number };
+  const text = (data.response ?? "").trim();
+  recordUsage({ promptChars: opts.prompt.length, completion: data.eval_count ?? estimateTokens(text), cap: 80 });
+  return { text, model };
 }
 
 export async function chatWithMail(opts: {

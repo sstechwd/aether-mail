@@ -36,6 +36,14 @@ export default function Settings(props: { onClose: () => void }) {
   const [rules, setRules] = useState<Array<{ id: string; spoken: string; action: string }>>([]);
   const [audit, setAudit] = useState<Array<{ at: string; actor: string; action: string; detail: string }>>([]);
   const [memory, setMemory] = useState<Array<{ kind: string; name: string }>>([]);
+  const [themes, setThemes] = useState<Array<{ id: string; label: string; note: string }>>([]);
+  const [themeId, setThemeId] = useState(() => {
+    try {
+      return localStorage.getItem("aether.theme") || "retro";
+    } catch {
+      return "retro";
+    }
+  });
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,6 +65,9 @@ export default function Settings(props: { onClose: () => void }) {
       .catch(() => undefined);
     api<{ hits: Array<{ kind: string; name: string }> }>("/api/memory")
       .then((d) => setMemory(d.hits ?? []))
+      .catch(() => undefined);
+    api<{ themes: Array<{ id: string; label: string; note: string }> }>("/api/themes")
+      .then((d) => setThemes(d.themes))
       .catch(() => undefined);
   }, []);
 
@@ -244,6 +255,29 @@ export default function Settings(props: { onClose: () => void }) {
         >
           Save writing sample
         </button>
+      </section>
+      <section>
+        <h2>Theme</h2>
+        <p className="hint">Retro is the original olive/copper. Modern is the library slot. Custom skins later = CSS variables only.</p>
+        <div className="theme-row">
+          {themes.map((t) => (
+            <button
+              key={t.id}
+              className={t.id === themeId ? "folder on" : "folder"}
+              onClick={() => {
+                setThemeId(t.id);
+                document.documentElement.dataset.theme = t.id;
+                try {
+                  localStorage.setItem("aether.theme", t.id);
+                } catch {
+                  /* ignore */
+                }
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </section>
       <section>
         <h2>Sibyl memory</h2>

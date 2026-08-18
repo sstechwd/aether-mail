@@ -15,6 +15,8 @@ import { prepareSend } from "./send-prepare.js";
 import { AuditLog } from "./audit.js";
 import { PersonaBook } from "./persona.js";
 import { scoreThreat } from "./threat.js";
+import { THEMES } from "./themes.js";
+import { usageSnapshot } from "./usage.js";
 import { SibylMemory } from "./sibyl.js";
 import { applyWorkflows, compileWorkflows, WorkflowBook } from "./workflows.js";
 
@@ -623,6 +625,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/memory") {
       const hits = await sibyl.list().catch(() => []);
       return json(res, 200, { hits, backend: "sibyl-memory-client" }, origin);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/usage") {
+      return json(res, 200, usageSnapshot(), origin);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/themes") {
+      return json(res, 200, { themes: THEMES }, origin);
     }
 
     return notFound(res);
