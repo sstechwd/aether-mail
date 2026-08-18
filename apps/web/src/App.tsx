@@ -531,7 +531,7 @@ export default function App() {
             <span className="when">{formatWhen(m.date)}</span>
           </button>
         ))}
-        {visible.length === 0 ? <p className="empty">No messages.</p> : null}
+        {visible.length === 0 ? <p className="empty">{unreadOnly ? "No unread in this folder." : "No messages."}</p> : null}
       </section>
 
       <main className="read">
