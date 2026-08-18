@@ -165,11 +165,12 @@ export async function runAgent(opts: {
   apiKey?: string;
   provider?: "ollama" | "openai-compatible";
   allowCloud?: boolean;
+  voice?: string;
 }): Promise<AgentResult> {
   const task = taskFor(opts.skill);
 
   const prompt = `${SYSTEM}
-
+${opts.voice ? `\n${opts.voice}\n` : ""}
 Task: ${task}
 
 From: ${opts.from}

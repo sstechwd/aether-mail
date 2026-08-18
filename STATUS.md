@@ -1,38 +1,28 @@
-# STATUS.md — morning briefing
+# STATUS.md — 3-hour unattended stretch
 
-**Updated:** 2026-08-16  
-**HEAD:** about to push `main` to https://github.com/sstechwd/aether-mail  
-**Live right now:** start `scripts\start-mvp.bat` after `cargo build -p aether-cli`
+**Started:** 2026-08-17 18:15 local  
+**Owner:** Aether. Human away ~3 hours. Do not wait.  
+**Remote:** private. Do not `git push`.  
+**Answer to “status”:** this file.
 
-## What changed (this session)
+## This window’s MVP (clickable)
 
-- OS keyring via Rust `aether-cli` (Windows Credential Manager). Password never in git, never on argv.
-- IMAP LOGIN+LIST + fetch, SMTP send — **Rust only**, TLS required.
-- BYOK OpenAI-compatible models. Cloud requires **allowCloud** in Settings.
-- Two-click Confirm send. Agent cannot confirm.
+1. Reply / Confirm send names the **sender** (not you).
+2. Chat can teach: create folder + file from an address.
+3. **Persona:** paste sent-mail samples → drafts sound more like you.
+4. **Spam/threat score** on open mail (local heuristics, not a cloud scanner).
+5. **New folder** in the UI. Status bar: unread + last fetch.
+6. **Phone-usable layout** in the browser (not an App Store build).
 
-## How to connect a real account
+## Explicitly out (3 hours)
 
-1. `export PATH="$HOME/.cargo/bin:$PATH" && cargo build -p aether-cli`
-2. Start Ollama if you want local chat; skip if you only test mail.
-3. `scripts\start-mvp.bat` → http://127.0.0.1:5173/
-4. Settings → pick Gmail/Outlook/custom → **app password** (not your main login).
-5. Save. Probe should say IMAP LOGIN+LIST ok.
-6. **Fetch INBOX**.
-7. To send: compose/reply → Confirm send **twice**.
+Native iOS/Android, OAuth, auto-reply (that is send), PDF viewer, public repo, billing, Tauri `.exe`.
 
-Gmail: Google Account → Security → App passwords.  
-Outlook work tenants often block app passwords (OAuth later).  
-Proton: Proton Bridge only.
+## Launch
 
-## Do not
+`scripts\start-mvp.bat` → http://127.0.0.1:5173/  
+Phone on the same LAN will **not** work (API is 127.0.0.1 only). Use the phone’s browser against the PC only if we later add a bind you asked for. Default stays localhost.
 
-- Put your real password in if `aether-cli` is not built.
-- Check allow-cloud unless you want the open message sent to that API.
-- Expect OAuth. App password only.
+## Income
 
-## Tests last run
-
-- `cargo test` including OS keyring + TLS policy
-- `vitest` 26 passed
-- web build clean
+See `docs/INCOME.md`. Hermes-shaped: free client, optional Aether+.

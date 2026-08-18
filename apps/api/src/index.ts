@@ -12,6 +12,8 @@ import { ChatThread } from "./chat.js";
 import { buildMailCliArgs, runMailCli } from "./mailio.js";
 import { prepareSend } from "./send-prepare.js";
 import { AuditLog } from "./audit.js";
+import { PersonaBook } from "./persona.js";
+import { scoreThreat } from "./threat.js";
 import { applyWorkflows, compileWorkflows, WorkflowBook } from "./workflows.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
@@ -26,7 +28,9 @@ const accounts = new AccountBook(path.resolve(here, "../../../data/accounts.json
 const llm = new LlmSettings(path.resolve(here, "../../../data/llm.json"));
 const workflows = new WorkflowBook(path.resolve(here, "../../../data/workflows.json"));
 const audit = new AuditLog(path.resolve(here, "../../../data/audit.jsonl"));
+const persona = new PersonaBook(path.resolve(here, "../../../data/persona.json"));
 const chat = new ChatThread();
+let lastFetchAt: string | null = null;
 
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
@@ -104,7 +108,12 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === "GET" && url.pathname === "/api/health") {
-      return json(res, 200, { ok: true, account: FIXTURE_ACCOUNT, ollama: "http://127.0.0.1:11434" });
+      return json(res, 200, {
+        ok: true,
+        account: { id: activeAccountId },
+        lastFetchAt,
+        unread: store.listFolders(activeAccountId).reduce((n, f) => n + (f.name === "Starred" ? 0 : f.unread), 0),
+      });
     }
 
     if (req.method === "GET" && url.pathname === "/api/folders") {
@@ -180,7 +189,8 @@ const server = http.createServer(async (req, res) => {
       const message = store.getMessage(id);
       if (!message) return notFound(res);
       store.markRead(id);
-      return json(res, 200, { message, draft: drafts.get(id) ?? null });
+      const threat = scoreThreat(message);
+      return json(res, 200, { message, draft: drafts.get(id) ?? null, threat });
     }
 
     if (req.method === "GET" && url.pathname === "/api/search") {
@@ -207,6 +217,7 @@ const server = http.createServer(async (req, res) => {
         apiKey: cfg.apiKey,
         provider: cfg.provider,
         allowCloud: cfg.allowCloud,
+        voice: persona.promptBlock() || undefined,
       });
       if (result.skill === "draft-reply") {
         drafts.set(message.id, {
@@ -216,6 +227,32 @@ const server = http.createServer(async (req, res) => {
         });
       }
       return json(res, 200, { result, draft: drafts.get(message.id) ?? null });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/folders") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { name?: string };
+      const name = (body.name ?? "").trim();
+      if (!name) return json(res, 400, { error: "need name" }, origin);
+      store.ensureFolder(activeAccountId, name);
+      audit.append({ actor: "user", action: "folder.create", detail: name });
+      return json(res, 201, { folders: store.listFolders(activeAccountId) }, origin);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/persona") {
+      const p = persona.read();
+      return json(res, 200, { count: p.samples.length, updatedAt: p.updatedAt }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/persona") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { sample?: string };
+      try {
+        const p = persona.add(body.sample ?? "");
+        return json(res, 200, { count: p.samples.length }, origin);
+      } catch (e) {
+        return json(res, 400, { error: "bad_persona", message: e instanceof Error ? e.message : String(e) }, origin);
+      }
     }
 
     if (req.method === "GET" && url.pathname === "/api/providers") {
@@ -385,6 +422,7 @@ const server = http.createServer(async (req, res) => {
       );
       store.save();
       activeAccountId = account.id;
+      lastFetchAt = new Date().toISOString();
       const ran = runWorkflows(account.id);
       return json(res, 200, { folders: store.listFolders(account.id), count: fetched.messages?.length ?? 0, workflows: ran }, origin);
     }

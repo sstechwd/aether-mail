@@ -188,6 +188,30 @@ export default function Settings(props: { onClose: () => void }) {
           Teach the agent
         </button>
       </section>
+      <section>
+        <h2>Your voice</h2>
+        <p className="hint">Paste a sent email you wrote. Drafts will try to sound like you. Stored locally, max 8 samples. Not uploaded unless you use a cloud model.</p>
+        <textarea
+          rows={4}
+          placeholder="Hey — Thursday works on my side…"
+          id="persona-sample"
+        />
+        <button
+          onClick={() => {
+            const el = document.getElementById("persona-sample") as HTMLTextAreaElement | null;
+            const sample = el?.value ?? "";
+            setNote(null);
+            api<{ count: number }>("/api/persona", { method: "POST", body: JSON.stringify({ sample }) })
+              .then((d) => {
+                if (el) el.value = "";
+                setNote(`Saved. ${d.count} sample(s) on this machine.`);
+              })
+              .catch((e: Error) => setNote(e.message));
+          }}
+        >
+          Save writing sample
+        </button>
+      </section>
       {note ? <p className="note">{note}</p> : null}
     </div>
   );

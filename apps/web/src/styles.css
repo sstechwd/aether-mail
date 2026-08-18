@@ -113,16 +113,40 @@ textarea:focus-visible {
   grid-area: status;
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 0 12px;
+  gap: 0;
+  padding: 0 10px;
   background: var(--chrome);
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.02em;
+  height: var(--status-h);
   min-height: var(--status-h);
+  max-height: var(--status-h);
+  overflow: hidden;
+  white-space: nowrap;
   z-index: 3;
+}
+
+.statusbar > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.statusbar > span + span::before {
+  content: "·";
+  display: inline-block;
+  margin: 0 10px;
+  color: var(--faint);
+}
+
+.statusbar > span:last-child {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--faint);
 }
 
 .statusbar .sb-sync,
@@ -803,17 +827,106 @@ input[type="checkbox"] {
 
 @media (max-width: 900px) {
   .shell {
-    grid-template-columns: 160px 1fr;
+    grid-template-columns: 148px 240px 1fr;
+  }
+
+  .brand {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
+  .brand em { display: none; }
+
+  .search { max-width: 160px; }
+
+  .settings { inset: 4vh 4vw; }
+
+  .compose { width: min(360px, calc(100vw - 24px)); }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    grid-template-columns: minmax(200px, 42%) 1fr;
     grid-template-areas:
       "top top"
-      "folders list"
+      "list read"
       "status status";
+  }
+
+  .folders { display: none; }
+
+  .read {
+    display: block;
+    padding: 14px 14px 20px;
+  }
+
+  .headers h1 { font-size: 17px; }
+}
+
+/* Phone portrait. Unconditional .read { display: none } is a trap —
+   there is no way back to the message. Swap for [data-pane] rules in
+   docs/ui-agent/MOBILE.md before calling this usable. */
+@media (max-width: 520px) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr var(--status-h);
+    grid-template-areas:
+      "top"
+      "list"
+      "status";
   }
 
   .read { display: none; }
 
-  .settings { inset: 4vh 4vw; }
+  .topbar {
+    flex-wrap: wrap;
+    padding: 6px 8px;
+    row-gap: 6px;
+  }
+
+  .search {
+    max-width: none;
+    flex: 1 1 100%;
+    order: 3;
+  }
+
+  .toolbar { margin-left: 0; }
+
+  .compose {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: calc(var(--status-h) + 8px);
+  }
+
+  .settings {
+    inset: 0;
+    border-radius: 0;
+  }
+
+  .shell.has-mail {
+    grid-template-areas:
+      "top"
+      "read"
+      "status";
+  }
+
+  .shell.has-mail .list { display: none; }
+  .shell.has-mail .read { display: block; }
+  .back-phone { display: inline-block; margin-bottom: 8px; }
 }
+
+.back-phone { display: none; }
+
+.threat {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+}
+.threat.danger { color: var(--danger); border-color: var(--danger); }
+.threat.caution { color: var(--accent-soft); }
+.threat.ok { color: var(--ok); }
 
 @media (prefers-reduced-motion: reduce) {
   *,

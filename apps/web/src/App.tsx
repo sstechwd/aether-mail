@@ -68,6 +68,9 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sendNote, setSendNote] = useState<string | null>(null);
+  const [threat, setThreat] = useState<{ score: number; label: string; reasons: string[] } | null>(null);
+  const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
+  const [unreadTotal, setUnreadTotal] = useState(0);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
@@ -101,6 +104,17 @@ export default function App() {
     api<{ accounts: SavedAccount[] }>("/api/accounts")
       .then((d) => setSavedAccounts(d.accounts))
       .catch((e: Error) => setError(e.message));
+    const tick = () => {
+      api<{ lastFetchAt: string | null; unread: number }>("/api/health")
+        .then((d) => {
+          setLastFetchAt(d.lastFetchAt);
+          setUnreadTotal(d.unread);
+        })
+        .catch(() => undefined);
+    };
+    tick();
+    const id = setInterval(tick, 15000);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -110,11 +124,15 @@ export default function App() {
   useEffect(() => {
     if (!selectedId) {
       setSelected(null);
+      setThreat(null);
       return;
     }
-    api<{ message: Message; draft: { text: string } | null }>(`/api/messages/${selectedId}`)
+    api<{ message: Message; draft: { text: string } | null; threat?: { score: number; label: string; reasons: string[] } }>(
+      `/api/messages/${selectedId}`,
+    )
       .then((data) => {
         setSelected(data.message);
+        setThreat(data.threat ?? null);
         if (data.draft?.text) setDraft(data.draft.text);
         setMessages((prev) => prev.map((m) => (m.id === selectedId ? { ...m, unread: false } : m)));
         refreshFolders().catch(() => undefined);
@@ -341,7 +359,7 @@ export default function App() {
   }
 
   return (
-    <div className="shell">
+    <div className={selected ? "shell has-mail" : "shell"}>
       <header className="topbar">
         <div className="brand">
           <span className="mark">Æ</span>
@@ -419,6 +437,18 @@ export default function App() {
         ) : null}
         {accountNote ? <p className="hint">{accountNote}</p> : null}
         <p className="acct">Folders</p>
+        <button
+          className="folder"
+          onClick={() => {
+            const name = window.prompt("New folder name");
+            if (!name) return;
+            api<{ folders: Folder[] }>("/api/folders", { method: "POST", body: JSON.stringify({ name }) })
+              .then((d) => setFolders(d.folders))
+              .catch((e: Error) => setError(e.message));
+          }}
+        >
+          + New folder
+        </button>
         {folders.map((f) => (
           <button
             key={f.name}
@@ -471,6 +501,9 @@ export default function App() {
         ) : (
           <>
             <div className="headers">
+              <button className="back-phone" onClick={() => setSelectedId(null)}>
+                ← Inbox
+              </button>
               <h1>{selected.subject}</h1>
               <p>
                 <b>From</b> {selected.from}
@@ -482,6 +515,12 @@ export default function App() {
                 <b>Date</b> {formatWhen(selected.date)}
               </p>
             </div>
+            {threat ? (
+              <p className={`threat ${threat.label}`}>
+                Threat {threat.score}/100 · {threat.label}
+                {threat.reasons[0] ? ` · ${threat.reasons[0]}` : ""}
+              </p>
+            ) : null}
             <pre className="body">{selected.body}</pre>
 
             <section className="agent">
@@ -562,8 +601,9 @@ export default function App() {
       ) : null}
       {showSettings ? <Settings onClose={() => setShowSettings(false)} /> : null}
       <footer className="statusbar">
-        <span>Local client · fixture + IMAP via aether-cli</span>
-        <span>Agent cannot send</span>
+        <span className="sb-unread">{unreadTotal} unread</span>
+        <span className="sb-sync">{lastFetchAt ? `Last fetch ${lastFetchAt.slice(11, 16)} UTC` : "Fixture only — no live fetch yet"}</span>
+        <span className="sb-agent">{busy ? "agent thinking" : "agent idle"}</span>
       </footer>
     </div>
   );
