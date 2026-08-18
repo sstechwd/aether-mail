@@ -282,6 +282,8 @@ export default function App() {
       if (e.key === "Escape") {
         setShowKeys(false);
         setShowFolders(false);
+        setShowSettings(false);
+        setComposing(false);
         return;
       }
       if (e.key === "c") {

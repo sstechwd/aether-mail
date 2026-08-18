@@ -1,25 +1,27 @@
-# STATUS.md — unattended stretch (still running until 21:00)
+# STATUS.md — unattended stretch (running until 21:00)
 
-**Updated:** 2026-08-17 ~18:41  
-**Do not push.** Private repo.
+**Updated:** 2026-08-17 18:50  
+**Do not push.** Private. Ahead of origin.
 
-## Works now (restart MVP + hard refresh)
-
-- Reply send uses **sender** as To
-- Chat teaches folder/file/spam rules (no LLM)
-- Persona samples, threat score, Spam, Move to…, `!` = Spam
-- Audit 30 days in Settings
-- Phone: list ↔ read, ← Inbox
-- Unread only, Mark folder read, `n` next unread
-- Status bar: unread / last fetch / agent idle
-- Income: `docs/INCOME.md`
-
-## Launch
+## Click after restart + hard refresh
 
 `scripts\start-mvp.bat` → http://127.0.0.1:5173/
 
-## Still not daily-driver Gmail
+- **Fetch INBOX** on the toolbar once an account is saved
+- **?** or Keys — shortcut list. Esc closes overlays
+- Phone: **Folders** drawer; list ↔ read; ← Inbox
+- Settings: Forget a workflow, Audit, Your voice
+- `!` Spam, `n` next unread, Unread only, Mark folder read
+- Reply Confirm send names the **sender**
+- Chat: create folder + file from address; `move newsletters to spam`
+- Threat banner on the phish fixture
 
-Need app password + Fetch. No OAuth. No store app. No auto-reply.
+## Tests last run
 
-Tests: cargo green, vitest 41, web build clean.
+cargo green (incl. empty Spam folder). vitest **42**. web build clean.
+
+## Still not
+
+OAuth, auto-reply, native store app, Tauri `.exe`, public GitHub, live IMAP until you use an app password.
+
+Income: `docs/INCOME.md`
