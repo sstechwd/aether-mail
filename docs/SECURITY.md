@@ -24,6 +24,8 @@ We do not host mail. JS never speaks IMAP/SMTP.
 | `secret_ref` stripped from webview | yes |
 | Agent cannot send | two-step human confirm; 5-minute token |
 | Cloud model gated | `allowCloud` default false |
+| Account remove deletes keyring | yes — `aether-cli secret-delete` |
+| Audit log 30 days, no bodies | yes |
 | HTML mail | still `<pre>`, not innerHTML |
 
 ## Still honest limits
