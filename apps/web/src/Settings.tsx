@@ -35,6 +35,7 @@ export default function Settings(props: { onClose: () => void }) {
   const [spoken, setSpoken] = useState("star invoices and archive newsletters");
   const [rules, setRules] = useState<Array<{ id: string; spoken: string; action: string }>>([]);
   const [audit, setAudit] = useState<Array<{ at: string; actor: string; action: string; detail: string }>>([]);
+  const [memory, setMemory] = useState<Array<{ kind: string; name: string }>>([]);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,6 +54,9 @@ export default function Settings(props: { onClose: () => void }) {
       .catch((e: Error) => setNote(e.message));
     api<{ events: Array<{ at: string; actor: string; action: string; detail: string }> }>("/api/audit")
       .then((d) => setAudit(d.events.slice().reverse().slice(0, 40)))
+      .catch(() => undefined);
+    api<{ hits: Array<{ kind: string; name: string }> }>("/api/memory")
+      .then((d) => setMemory(d.hits ?? []))
       .catch(() => undefined);
   }, []);
 
@@ -240,6 +244,18 @@ export default function Settings(props: { onClose: () => void }) {
         >
           Save writing sample
         </button>
+      </section>
+      <section>
+        <h2>Sibyl memory</h2>
+        <p className="hint">
+          Official Sibyl SDK, SQLite on this PC. Chat “remember that Priya prefers Friday 9:30”. Mail bodies and passwords stay out. Not uploaded.
+        </p>
+        {memory.length === 0 ? <p className="hint">Empty until you teach it.</p> : null}
+        {memory.map((h) => (
+          <p key={`${h.kind}-${h.name}`} className="acct-line">
+            {h.kind}/{h.name}
+          </p>
+        ))}
       </section>
       <section>
         <h2>Audit (30 days)</h2>

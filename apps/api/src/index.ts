@@ -15,6 +15,7 @@ import { prepareSend } from "./send-prepare.js";
 import { AuditLog } from "./audit.js";
 import { PersonaBook } from "./persona.js";
 import { scoreThreat } from "./threat.js";
+import { SibylMemory } from "./sibyl.js";
 import { applyWorkflows, compileWorkflows, WorkflowBook } from "./workflows.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
@@ -34,6 +35,7 @@ const llm = new LlmSettings(path.resolve(here, "../../../data/llm.json"));
 const workflows = new WorkflowBook(path.resolve(here, "../../../data/workflows.json"));
 const audit = new AuditLog(path.resolve(here, "../../../data/audit.jsonl"));
 const persona = new PersonaBook(path.resolve(here, "../../../data/persona.json"));
+const sibyl = new SibylMemory(path.resolve(here, "../../../data/sibyl.db"));
 const chat = new ChatThread();
 let lastFetchAt: string | null = (() => {
   try {
@@ -233,6 +235,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { error: "need messageId and skill summarize|draft-reply|triage|action-items" });
       }
       const cfg = llm.resolve();
+      const memory = await sibyl.promptBlock(`${message.from} ${message.subject}`).catch(() => "");
       const result = await runAgent({
         skill: body.skill,
         subject: message.subject,
@@ -244,6 +247,7 @@ const server = http.createServer(async (req, res) => {
         provider: cfg.provider,
         allowCloud: cfg.allowCloud,
         voice: persona.promptBlock() || undefined,
+        memory: memory || undefined,
       });
       if (result.skill === "draft-reply") {
         drafts.set(message.id, {
@@ -283,6 +287,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(raw || "{}") as { sample?: string };
       try {
         const p = persona.add(body.sample ?? "");
+        void sibyl.remember("voice", "user", { samples: p.samples.length, hint: (body.sample ?? "").slice(0, 200) });
         return json(res, 200, { count: p.samples.length }, origin);
       } catch (e) {
         return json(res, 400, { error: "bad_persona", message: e instanceof Error ? e.message : String(e) }, origin);
@@ -403,6 +408,29 @@ const server = http.createServer(async (req, res) => {
       if (!text) return json(res, 400, { error: "need text" }, origin);
       const mail = body.messageId ? store.getMessage(body.messageId) : undefined;
       chat.add("user", text);
+      const rememberMatch = text.match(/^(remember that|remember:|note that)\s+(.+)/i);
+      if (rememberMatch) {
+        const note = rememberMatch[2].slice(0, 800);
+        const name = note.split(/\s+/).slice(0, 4).join("-").toLowerCase().replace(/[^a-z0-9-]/g, "") || "note";
+        try {
+          await sibyl.remember("note", name, { text: note });
+          await sibyl.journal(`remembered ${name}`);
+          const summary = `Saved to Sibyl memory on this machine (not uploaded): ${note}`;
+          chat.add("assistant", summary);
+          audit.append({ actor: "user", action: "sibyl.remember", detail: name });
+          return json(res, 200, { turns: chat.list(), result: { text: summary, model: "sibyl", refused: [] } }, origin);
+        } catch (e) {
+          return json(res, 500, { error: "sibyl", message: e instanceof Error ? e.message : String(e) }, origin);
+        }
+      }
+      if (/what do you remember|show memory|list memory/i.test(text)) {
+        const listed = await sibyl.list().catch(() => []);
+        const summary = listed.length
+          ? `Sibyl (local):\n${listed.map((h) => `• ${h.kind}/${h.name}`).join("\n")}`
+          : "Sibyl memory is empty. Say “remember that …”";
+        chat.add("assistant", summary);
+        return json(res, 200, { turns: chat.list(), result: { text: summary, model: "sibyl", refused: [] } }, origin);
+      }
       if (/^(what|list|show)\b.*\b(rule|workflow)/i.test(text) || /^(rules|workflows)\??$/i.test(text)) {
         const listed = workflows.publicList();
         const summary = listed.length
@@ -414,7 +442,10 @@ const server = http.createServer(async (req, res) => {
       try {
         const taught = compileWorkflows(text);
         if (taught.length) {
-          for (const rule of taught) workflows.add(rule);
+          for (const rule of taught) {
+            workflows.add(rule);
+            void sibyl.remember("workflow", rule.id, { spoken: rule.spoken, action: rule.action, folder: rule.folder });
+          }
           const ran = runWorkflows(activeAccountId);
           const summary = `Saved ${taught.length} workflow(s): ${taught.map((r) => r.action + (r.folder ? " → " + r.folder : "")).join(", ")}. Applied to ${ran.length} messages. I will not send or delete.`;
           chat.add("assistant", summary);
@@ -425,6 +456,7 @@ const server = http.createServer(async (req, res) => {
         /* not a workflow sentence — fall through to LLM */
       }
       const cfg = llm.resolve();
+      const memory = await sibyl.promptBlock(text).catch(() => "");
       try {
         const result = await chatWithMail({
           history: chat.promptBlock(),
@@ -435,6 +467,7 @@ const server = http.createServer(async (req, res) => {
           apiKey: cfg.apiKey,
           provider: cfg.provider,
           allowCloud: cfg.allowCloud,
+          memory: memory || undefined,
         });
         chat.add("assistant", result.text);
         return json(res, 200, { turns: chat.list(), result }, origin);
@@ -585,6 +618,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/audit") {
       return json(res, 200, { events: audit.list() }, origin);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/memory") {
+      const hits = await sibyl.list().catch(() => []);
+      return json(res, 200, { hits, backend: "sibyl-memory-client" }, origin);
     }
 
     return notFound(res);

@@ -54,3 +54,5 @@
 2026-08-17 20:13  Copper top bar + larger unread mark. Last feature commit of the stretch.
 2026-08-17 21:16  Cron briefing. No new features. cargo 16 / vitest 45 / web build green.
 2026-08-17 21:16  Still not a daily Gmail driver (no OAuth, no .exe, phone = browser). Did not push.
+
+2026-08-17 21:32  Sibyl Memory (official SDK, local SQLite). Chat remember / recall. vitest 46.

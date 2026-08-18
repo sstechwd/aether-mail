@@ -126,13 +126,14 @@ export async function chatWithMail(opts: {
   apiKey?: string;
   provider?: "ollama" | "openai-compatible";
   allowCloud?: boolean;
+  memory?: string;
 }): Promise<{ text: string; model: string; refused: string[] }> {
   const mailBlock = opts.mail
     ? `Open message:\nFrom: ${opts.mail.from}\nSubject: ${opts.mail.subject}\n${opts.mail.body.slice(0, 800)}`
     : "No message is open.";
   const prompt = `${SYSTEM}
 
-${mailBlock}
+${opts.memory ? `${opts.memory}\n` : ""}${mailBlock}
 
 Recent chat (max 8 turns):
 ${opts.history || "(none)"}
@@ -166,11 +167,13 @@ export async function runAgent(opts: {
   provider?: "ollama" | "openai-compatible";
   allowCloud?: boolean;
   voice?: string;
+  memory?: string;
 }): Promise<AgentResult> {
   const task = taskFor(opts.skill);
 
   const prompt = `${SYSTEM}
 ${opts.voice ? `\n${opts.voice}\n` : ""}
+${opts.memory ? `${opts.memory}\n` : ""}
 Task: ${task}
 
 From: ${opts.from}
