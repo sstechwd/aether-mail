@@ -13,8 +13,9 @@ Open http://127.0.0.1:5173/  (hard-refresh after a pull/restart)
 - 3-pane + olive/copper theme. Narrow the window for phone panes (← Inbox).
 - Phish fixture: threat score + **Move to Spam**. `!` also files to Spam.
 - **Reply** / Draft reply → Confirm send names the **sender**. Fixture SMTP still honest-fails until a real account.
-- Chat: `Messages from priya@example.com create a folder named Priya and move them there`
-- Chat/Settings: `move newsletters to spam`
+- Chat/Settings: `move newsletters to spam`, `keep invoices unread`, Forget a rule
+- **?** shortcut list. Esc closes overlays. Phone **Folders** drawer.
+- **Fetch INBOX** on the toolbar after you save an account.
 - Settings: Your voice, Workflows, Audit (30 days)
 - **+ New folder**, **Move to…**, Unread only
 
