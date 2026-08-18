@@ -400,7 +400,7 @@ export default function App() {
           <span className="mark">Æ</span>
           <div>
             <strong>Aether Mail</strong>
-            <em>local fixture · mistral on this machine</em>
+            <em>night-olive · copper filament</em>
           </div>
         </div>
         <button className="folders-toggle" type="button" onClick={() => setShowFolders((v) => !v)}>

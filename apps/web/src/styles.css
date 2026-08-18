@@ -31,10 +31,10 @@
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Cambria, Georgia, serif;
   --mono: "Cascadia Mono", "IBM Plex Mono", Consolas, "ui-monospace", monospace;
 
-  --top-h: 48px;
-  --status-h: 22px;
-  --folder-w: 196px;
-  --list-w: 300px;
+  --top-h: 56px;
+  --status-h: 24px;
+  --folder-w: 208px;
+  --list-w: 320px;
 
   font-family: var(--sans);
   font-size: 13px;
@@ -168,9 +168,9 @@ textarea:focus-visible {
   flex-wrap: wrap;
   gap: 8px 16px;
   row-gap: 6px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--chrome);
+  padding: 0 14px;
+  border-bottom: 2px solid var(--accent);
+  background: linear-gradient(180deg, #141910 0%, var(--chrome) 100%);
   min-width: 0;
   min-height: var(--top-h);
   position: relative;
@@ -186,16 +186,17 @@ textarea:focus-visible {
 }
 
 .brand .mark {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   background: var(--accent);
   color: #1a120c;
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: -0.02em;
-  border-radius: 2px;
+  font-weight: 750;
+  font-size: 16px;
+  letter-spacing: -0.04em;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px #8a5534, 0 6px 16px rgba(196, 120, 74, 0.35);
 }
 
 .brand strong {
@@ -208,8 +209,10 @@ textarea:focus-visible {
 .brand em {
   display: block;
   font-style: normal;
-  color: var(--muted);
+  color: var(--accent-soft);
   font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
 }
 
 .search {
