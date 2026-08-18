@@ -303,6 +303,7 @@ textarea:focus-visible {
   background: var(--select);
   color: var(--ink);
   font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--ok);
 }
 
 .counts {
@@ -332,7 +333,8 @@ textarea:focus-visible {
   grid-template-columns: 1fr auto;
   grid-template-areas: "from when" "subj subj";
   gap: 1px 8px;
-  padding: 6px 10px 6px 12px;
+  padding: 6px 10px 6px 20px;
+  position: relative;
   background: transparent;
   border: 0;
   border-bottom: 1px solid var(--line);
@@ -347,6 +349,7 @@ textarea:focus-visible {
 .row.on {
   background: var(--select);
   color: var(--ink);
+  box-shadow: inset 2px 0 0 var(--ok);
 }
 
 .row.unread .from {
@@ -361,14 +364,15 @@ textarea:focus-visible {
 
 .row.unread .from::before {
   content: "";
-  display: inline-block;
+  position: absolute;
+  left: 8px;
+  top: 12px;
+  display: block;
   width: 6px;
   height: 6px;
-  margin-right: 6px;
-  margin-bottom: 1px;
+  margin: 0;
   border-radius: 50%;
   background: var(--accent);
-  vertical-align: middle;
 }
 
 .from {
@@ -863,9 +867,9 @@ input[type="checkbox"] {
   .headers h1 { font-size: 17px; }
 }
 
-/* Phone portrait. Unconditional .read { display: none } is a trap —
-   there is no way back to the message. Swap for [data-pane] rules in
-   docs/ui-agent/MOBILE.md before calling this usable. */
+/* Phone portrait. List ↔ read is .shell.has-mail + .back-phone (App.tsx).
+   Folders are still display:none from the 720px query — drawer plan in
+   docs/ui-agent/MOBILE.md. Do not add a second pane switch. */
 @media (max-width: 520px) {
   .shell {
     grid-template-columns: 1fr;
