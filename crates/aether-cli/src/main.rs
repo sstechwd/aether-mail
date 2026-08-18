@@ -68,10 +68,11 @@ fn run() -> Result<(), String> {
     let flags = flags(&args);
     match action {
         "secret-put" => secret_put(&flags),
+        "secret-delete" => secret_delete(&flags),
         "probe" => probe(&flags),
         "fetch" => fetch_mail(&flags),
         "send" => send_mail(&flags),
-        _ => Err("usage: aether-cli secret-put|probe|fetch|send --secret-ref <id> ...".into()),
+        _ => Err("usage: aether-cli secret-put|secret-delete|probe|fetch|send --secret-ref <id> ...".into()),
     }
 }
 
@@ -106,6 +107,22 @@ fn secret_put(flags: &HashMap<String, String>) -> Result<(), String> {
     secrets()
         .put(refer, secret)
         .map_err(|e| e.to_string())?;
+    println!(
+        "{}",
+        serde_json::to_string(&JsonOut {
+            ok: true,
+            error: None,
+            folders: None,
+            messages: None,
+        })
+        .map_err(|e| e.to_string())?
+    );
+    Ok(())
+}
+
+fn secret_delete(flags: &HashMap<String, String>) -> Result<(), String> {
+    let refer = flags.get("secret-ref").ok_or("need --secret-ref")?;
+    secrets().delete(refer).map_err(|e| e.to_string())?;
     println!(
         "{}",
         serde_json::to_string(&JsonOut {

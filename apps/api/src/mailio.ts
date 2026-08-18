@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type MailCliAction = "probe" | "fetch" | "send" | "secret-put";
+export type MailCliAction = "probe" | "fetch" | "send" | "secret-put" | "secret-delete";
 
 export function buildMailCliArgs(input: {
   action: MailCliAction;

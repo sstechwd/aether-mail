@@ -295,8 +295,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "DELETE" && url.pathname.startsWith("/api/accounts/") && !url.pathname.endsWith("/sync")) {
       const id = decodeURIComponent(url.pathname.slice("/api/accounts/".length));
+      const row = accounts.get(id);
       const ok = accounts.remove(id);
       if (!ok) return json(res, 404, { error: "not_found" }, origin);
+      if (row) {
+        void runMailCli(buildMailCliArgs({ action: "secret-delete", secretRef: row.secret_ref }));
+      }
       audit.append({ actor: "user", action: "account.remove", detail: id });
       return json(res, 200, { accounts: accounts.list().map(publicAccount) }, origin);
     }

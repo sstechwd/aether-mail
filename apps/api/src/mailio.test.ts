@@ -17,4 +17,9 @@ describe("mail CLI argv", () => {
     expect(args).toContain("keyring:acc-1");
     expect(args[0]).toBe("probe");
   });
+
+  it("deletes a keyring entry by ref only — no password on argv", () => {
+    const args = buildMailCliArgs({ action: "secret-delete", secretRef: "keyring:acc-1" });
+    expect(args).toEqual(["secret-delete", "--secret-ref", "keyring:acc-1"]);
+  });
 });
