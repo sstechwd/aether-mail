@@ -18,6 +18,12 @@ describe("compileWorkflow", () => {
     );
   });
 
+  it("compiles keep invoices unread", () => {
+    const rule = compileWorkflow("keep invoices unread");
+    expect(rule.action).toBe("keep");
+    expect(rule.matches({ subject: "Invoice #9", from: "ap@x.com", body: "due" })).toBe(true);
+  });
+
   it("refuses to compile a send or delete workflow", () => {
     expect(() => compileWorkflow("when mail arrives, send a reply and delete it")).toThrow(/never/i);
   });

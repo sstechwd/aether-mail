@@ -55,7 +55,8 @@ export function compileWorkflow(spoken: string): Workflow {
     folder = "Spam";
   } else if (/\bstar\b|\bflag\b/i.test(text)) action = "star";
   else if (/\barchive\b|\bfile away\b/i.test(text)) action = "archive";
-  else throw new Error("Say what to do: star, archive, or create a folder and move mail from an address.");
+  else if (/\bkeep\b.*\bunread\b|\bleave\b.*\bunread\b/i.test(text)) action = "keep";
+  else throw new Error("Say what to do: star, archive, keep unread, or create a folder and move mail from an address.");
 
   const terms =
     action === "file" && fromAddr
@@ -82,7 +83,7 @@ export function compileWorkflow(spoken: string): Workflow {
 
 function extractTerms(text: string, action: WorkflowAction): string[] {
   const lower = text.toLowerCase();
-  const fromKnown = (action === "star" ? STAR_TERMS : ARCHIVE_TERMS).filter((t) => lower.includes(t));
+  const fromKnown = (action === "archive" ? ARCHIVE_TERMS : STAR_TERMS).filter((t) => lower.includes(t));
   if (fromKnown.length) return fromKnown;
   const leftover = lower
     .replace(/\b(star|flag|archive|file away|emails?|mail|and|the|a|an|about|from|when|arrives?)\b/g, " ")
@@ -103,7 +104,7 @@ export function applyWorkflows(
   const apply: WorkflowAction[] = [];
   let fileTo: string | undefined;
   for (const rule of rules) {
-    if (rule.matches(mail) && rule.action !== "keep" && !apply.includes(rule.action)) {
+    if (rule.matches(mail) && !apply.includes(rule.action)) {
       apply.push(rule.action);
       if (rule.action === "file" && rule.folder) fileTo = rule.folder;
     }

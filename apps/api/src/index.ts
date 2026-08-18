@@ -80,6 +80,7 @@ function runWorkflows(accountId: string): Array<{ id: string; apply: string[] }>
       store.ensureFolder(accountId, out.fileTo);
       store.move(id, out.fileTo);
     }
+    if (out.apply.includes("keep")) store.markUnread(id);
     if (out.apply.length) applied.push(out);
   }
   return applied;
