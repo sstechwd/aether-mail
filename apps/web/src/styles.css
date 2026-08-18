@@ -931,6 +931,17 @@ input[type="checkbox"] {
 .threat.danger { color: var(--danger); border-color: var(--danger); }
 .threat.caution { color: var(--accent-soft); }
 .threat.ok { color: var(--ok); }
+.move-to {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+.threat button {
+  margin-left: 8px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

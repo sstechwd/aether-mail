@@ -296,6 +296,10 @@ export default function App() {
         e.preventDefault();
         runSkill("draft-reply").catch((err: Error) => setError(err.message));
       }
+      if (e.key === "!") {
+        e.preventDefault();
+        moveSelected("Spam").catch((err: Error) => setError(err.message));
+      }
       if (e.key === "f") {
         e.preventDefault();
         forwardSelected().catch((err: Error) => setError(err.message));
@@ -535,6 +539,11 @@ export default function App() {
               <p className={`threat ${threat.label}`}>
                 Threat {threat.score}/100 · {threat.label}
                 {threat.reasons[0] ? ` · ${threat.reasons[0]}` : ""}
+                {threat.label === "danger" ? (
+                  <button className="inline" onClick={() => moveSelected("Spam").catch((e: Error) => setError(e.message))}>
+                    Move to Spam
+                  </button>
+                ) : null}
               </p>
             ) : null}
             <pre className="body">{selected.body}</pre>
