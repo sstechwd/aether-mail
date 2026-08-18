@@ -49,3 +49,8 @@
 2026-08-17 18:56  Remove saved account (RAM vault). UI polish CSS. vitest 44.
 
 2026-08-17 18:57  Remove account also deletes OS keyring via aether-cli secret-delete.
+2026-08-17 18:57  Remember last folder. Chat lists workflows locally (no Ollama).
+2026-08-17 19:00  API tsc so hermes verify typechecks the sidecar.
+2026-08-17 20:13  Copper top bar + larger unread mark. Last feature commit of the stretch.
+2026-08-17 21:16  Cron briefing. No new features. cargo 16 / vitest 45 / web build green.
+2026-08-17 21:16  Still not a daily Gmail driver (no OAuth, no .exe, phone = browser). Did not push.
