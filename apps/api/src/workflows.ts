@@ -115,9 +115,11 @@ export function applyWorkflows(
 type Saved = { id: string; spoken: string; action: WorkflowAction; terms: string[]; folder?: string };
 
 export class WorkflowBook {
-  constructor(private filePath?: string) {}
+  private rows: Saved[] = [];
 
-  private rows: Saved[] = this.filePath ? this.read() : [];
+  constructor(private filePath?: string) {
+    this.rows = this.read();
+  }
 
   private read(): Saved[] {
     if (!this.filePath) return [];

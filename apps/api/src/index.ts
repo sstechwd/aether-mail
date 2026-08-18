@@ -60,7 +60,7 @@ function rememberFetch(): void {
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
 const pendingSends = new Map<string, { to: string; subject: string; body: string; accountId: string; expires: number }>();
-let activeAccountId = FIXTURE_ACCOUNT.id;
+let activeAccountId: string = FIXTURE_ACCOUNT.id;
 
 function runWorkflows(accountId: string): Array<{ id: string; apply: string[] }> {
   const rules = workflows.list();
