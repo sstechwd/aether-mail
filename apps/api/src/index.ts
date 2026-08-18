@@ -18,6 +18,7 @@ import { scoreThreat } from "./threat.js";
 import { inspectHeaders, inspectSummary } from "./inspect.js";
 import { InspectBook } from "./inspect-prefs.js";
 import { readableBody, toIsoDate, countHiddenMedia } from "./mailtext.js";
+import { looksLikeHtml, remoteImageCount, sanitizeMailHtml } from "./html-mail.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -263,7 +264,16 @@ const server = http.createServer(async (req, res) => {
       const autoOpen = Boolean(
         inspect && ((prefs.autoInspect && inspect.label !== "ok") || prefs.alwaysShow),
       );
-      return json(res, 200, { message, draft: drafts.get(id) ?? null, threat, inspect, autoOpen }, origin);
+      const allowImages = url.searchParams.get("images") === "1";
+      const html = message.html ? sanitizeMailHtml(message.html, { allowRemoteImages: allowImages }) : null;
+      const remoteImages = message.html ? remoteImageCount(message.html) : 0;
+      const { html: _raw, ...safeMessage } = message;
+      return json(
+        res,
+        200,
+        { message: safeMessage, html, remoteImages, imagesOn: allowImages, draft: drafts.get(id) ?? null, threat, inspect, autoOpen },
+        origin,
+      );
     }
 
     if (req.method === "GET" && url.pathname === "/api/search") {
@@ -595,7 +605,8 @@ const server = http.createServer(async (req, res) => {
           unread: m.unread,
           body: readableBody(m.body || ""),
           headers: m.headers,
-          hiddenMedia: countHiddenMedia(m.body || ""),
+          hiddenMedia: remoteImageCount(m.body || "") || countHiddenMedia(m.body || ""),
+          html: looksLikeHtml(m.body || "") ? (m.body || "").slice(0, 40_000) : undefined,
         })),
       );
       store.save();

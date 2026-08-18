@@ -26,7 +26,7 @@ We do not host mail. JS never speaks IMAP/SMTP.
 | Cloud model gated | `allowCloud` default false |
 | Account remove deletes keyring | yes — `aether-cli secret-delete` |
 | Audit log 30 days, no bodies | yes |
-| HTML mail | still `<pre>`, not innerHTML |
+| HTML mail | sandboxed iframe, scripts stripped, remote images off until Load |
 
 ## Still honest limits
 

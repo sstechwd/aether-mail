@@ -156,6 +156,9 @@ export default function Settings(props: { onClose: () => void }) {
         <p className="hint">
           Local only. Compares From vs Return-Path and reads SPF/DKIM/DMARC. Not a cloud scanner. Chat “inspect headers” skips Ollama.
         </p>
+        <p className="hint">
+          HTML mail opens in a locked iframe (no scripts). Remote pictures stay off until you hit Load images — those can phone home.
+        </p>
         <label>
           <input
             type="checkbox"

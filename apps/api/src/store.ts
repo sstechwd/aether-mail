@@ -15,6 +15,7 @@ export type FixtureMessage = {
   body: string;
   headers?: string;
   hiddenMedia?: number;
+  html?: string;
 };
 
 export type FolderSummary = {
@@ -122,7 +123,7 @@ export class MailStore {
         return m.folder === folder;
       })
       .sort((a, b) => dir * compareMailDate(a.date, b.date) || dir * a.id.localeCompare(b.id))
-      .map((m) => ({ ...m, body: "", headers: undefined }));
+      .map((m) => ({ ...m, body: "", headers: undefined, html: undefined }));
   }
 
   getMessage(id: string): FixtureMessage | undefined {

@@ -68,3 +68,5 @@
 2026-08-18  Account switcher actually switches. Click Gmail in the folder pane.
 
 2026-08-18  Mailboxes isolated; newest/oldest sort; persist active account; onboard; readable body.
+
+2026-08-18  Sandboxed HTML mail; remote images off until Load. Scripts/iframes stripped.

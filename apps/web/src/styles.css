@@ -627,6 +627,18 @@ textarea:focus-visible {
   text-wrap: pretty;
 }
 
+.mail-frame {
+  display: block;
+  width: 100%;
+  max-width: 46rem;
+  min-height: 280px;
+  height: 55vh;
+  margin: 14px 0 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f4f1ea;
+}
+
 /* ——— Agent skill strip (read pane) ——— */
 
 .agent {

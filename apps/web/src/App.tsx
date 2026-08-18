@@ -90,6 +90,9 @@ export default function App() {
     receivedHops: number;
   } | null>(null);
   const [showInspect, setShowInspect] = useState(false);
+  const [mailHtml, setMailHtml] = useState<string | null>(null);
+  const [remoteImages, setRemoteImages] = useState(0);
+  const [imagesOn, setImagesOn] = useState(false);
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -196,10 +199,16 @@ export default function App() {
       setThreat(null);
       setInspect(null);
       setShowInspect(false);
+      setMailHtml(null);
+      setRemoteImages(0);
+      setImagesOn(false);
       return;
     }
     api<{
       message: Message;
+      html?: string | null;
+      remoteImages?: number;
+      imagesOn?: boolean;
       draft: { text: string } | null;
       threat?: { score: number; label: string; reasons: string[] };
       inspect?: {
@@ -216,6 +225,9 @@ export default function App() {
     }>(`/api/messages/${selectedId}`)
       .then((data) => {
         setSelected(data.message);
+        setMailHtml(data.html ?? null);
+        setRemoteImages(data.remoteImages ?? 0);
+        setImagesOn(Boolean(data.imagesOn));
         setThreat(data.threat ?? null);
         setInspect(data.inspect ?? null);
         setShowInspect(Boolean(data.autoOpen));
@@ -806,12 +818,45 @@ export default function App() {
                   : "No stored headers. Fetch INBOX again to keep Return-Path / Auth-Results."}
               </pre>
             ) : null}
-            {selected.hiddenMedia ? (
+            {remoteImages > 0 ? (
               <p className="hint">
-                {selected.hiddenMedia} image(s) not shown. Remote pictures stay off on purpose — we do not render HTML mail.
+                {imagesOn
+                  ? `${remoteImages} remote image(s) loading in a sandbox (trackers can still see your IP).`
+                  : `${remoteImages} remote image(s) blocked — trackers stay dark.`}{" "}
+                <button
+                  type="button"
+                  className="inline"
+                  onClick={() => {
+                    if (!selectedId) return;
+                    api<{ html?: string | null; imagesOn?: boolean }>(
+                      `/api/messages/${selectedId}?images=${imagesOn ? "0" : "1"}`,
+                    )
+                      .then((d) => {
+                        setMailHtml(d.html ?? null);
+                        setImagesOn(Boolean(d.imagesOn));
+                      })
+                      .catch((e: Error) => setError(e.message));
+                  }}
+                >
+                  {imagesOn ? "Block images" : "Load images"}
+                </button>
+              </p>
+            ) : selected.hiddenMedia ? (
+              <p className="hint">
+                {selected.hiddenMedia} image(s) not shown. Fetch INBOX again to keep HTML for the sandbox.
               </p>
             ) : null}
-            <pre className="body">{selected.body}</pre>
+            {mailHtml ? (
+              <iframe
+                className="mail-frame"
+                title="Message"
+                sandbox=""
+                referrerPolicy="no-referrer"
+                srcDoc={mailHtml}
+              />
+            ) : (
+              <pre className="body">{selected.body}</pre>
+            )}
 
             <section className="agent">
               <header>
