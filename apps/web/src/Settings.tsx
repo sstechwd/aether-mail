@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { THEMES, applyTheme, readTheme, type ThemeId } from "./themes";
 
 type Provider = {
   id: string;
@@ -36,14 +37,7 @@ export default function Settings(props: { onClose: () => void }) {
   const [rules, setRules] = useState<Array<{ id: string; spoken: string; action: string }>>([]);
   const [audit, setAudit] = useState<Array<{ at: string; actor: string; action: string; detail: string }>>([]);
   const [memory, setMemory] = useState<Array<{ kind: string; name: string }>>([]);
-  const [themes, setThemes] = useState<Array<{ id: string; label: string; note: string }>>([]);
-  const [themeId, setThemeId] = useState(() => {
-    try {
-      return localStorage.getItem("aether.theme") || "retro";
-    } catch {
-      return "retro";
-    }
-  });
+  const [themeId, setThemeId] = useState<ThemeId>(readTheme);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,9 +59,6 @@ export default function Settings(props: { onClose: () => void }) {
       .catch(() => undefined);
     api<{ hits: Array<{ kind: string; name: string }> }>("/api/memory")
       .then((d) => setMemory(d.hits ?? []))
-      .catch(() => undefined);
-    api<{ themes: Array<{ id: string; label: string; note: string }> }>("/api/themes")
-      .then((d) => setThemes(d.themes))
       .catch(() => undefined);
   }, []);
 
@@ -258,20 +249,15 @@ export default function Settings(props: { onClose: () => void }) {
       </section>
       <section>
         <h2>Theme</h2>
-        <p className="hint">Retro is the original olive/copper desk. Modern is a denser slate skin — steel accent, smoother hover. Custom later = CSS variables only.</p>
+        <p className="hint">Filament is the new default (near-black + amber). Retro keeps olive/copper. Works even if the API is down — picker is in the app, not fetched.</p>
         <div className="theme-row">
-          {themes.map((t) => (
+          {THEMES.map((t) => (
             <button
               key={t.id}
               className={t.id === themeId ? "folder on" : "folder"}
               onClick={() => {
                 setThemeId(t.id);
-                document.documentElement.dataset.theme = t.id;
-                try {
-                  localStorage.setItem("aether.theme", t.id);
-                } catch {
-                  /* ignore */
-                }
+                applyTheme(t.id);
               }}
             >
               {t.label}

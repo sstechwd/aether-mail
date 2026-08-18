@@ -15,6 +15,7 @@ import { prepareSend } from "./send-prepare.js";
 import { AuditLog } from "./audit.js";
 import { PersonaBook } from "./persona.js";
 import { scoreThreat } from "./threat.js";
+import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
 import { SibylMemory } from "./sibyl.js";
@@ -38,6 +39,7 @@ const workflows = new WorkflowBook(path.resolve(here, "../../../data/workflows.j
 const audit = new AuditLog(path.resolve(here, "../../../data/audit.jsonl"));
 const persona = new PersonaBook(path.resolve(here, "../../../data/persona.json"));
 const sibyl = new SibylMemory(path.resolve(here, "../../../data/sibyl.db"));
+const templates = new TemplateBook(path.resolve(here, "../../../data/templates.json"));
 const chat = new ChatThread();
 let lastFetchAt: string | null = (() => {
   try {
@@ -633,6 +635,27 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/themes") {
       return json(res, 200, { themes: THEMES }, origin);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/templates") {
+      return json(res, 200, { templates: templates.list() }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/templates") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { name?: string; subject?: string; body?: string };
+      try {
+        const row = templates.add({ name: body.name ?? "", subject: body.subject ?? "", body: body.body ?? "" });
+        return json(res, 201, { template: row, templates: templates.list() }, origin);
+      } catch (e) {
+        return json(res, 400, { error: "bad_template", message: e instanceof Error ? e.message : String(e) }, origin);
+      }
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/templates/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/templates/".length));
+      if (!templates.remove(id)) return json(res, 404, { error: "not_found" }, origin);
+      return json(res, 200, { templates: templates.list() }, origin);
     }
 
     return notFound(res);

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Settings from "./Settings";
 import AgentChat from "./AgentChat";
+import Templates from "./Templates";
+import { THEMES, applyTheme, readTheme } from "./themes";
 
 type Provider = {
   id: string;
@@ -78,6 +80,9 @@ export default function App() {
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [splash, setSplash] = useState(true);
+  const [themeId, setThemeId] = useState(readTheme);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [showFolders, setShowFolders] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
@@ -123,7 +128,11 @@ export default function App() {
     };
     tick();
     const id = setInterval(tick, 15000);
-    return () => clearInterval(id);
+    const splashTimer = setTimeout(() => setSplash(false), 1400);
+    return () => {
+      clearInterval(id);
+      clearTimeout(splashTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -395,12 +404,19 @@ export default function App() {
 
   return (
     <div className={selected ? "shell has-mail" : "shell"}>
+      {splash ? (
+        <div className="splash" role="status">
+          <span className="mark">Æ</span>
+          <strong>Aether Mail</strong>
+          <em>local · private</em>
+        </div>
+      ) : null}
       <header className="topbar">
         <div className="brand">
           <span className="mark">Æ</span>
           <div>
             <strong>Aether Mail</strong>
-            <em>night-olive · copper filament</em>
+            <em>{themeId === "retro" ? "night-olive · copper" : themeId === "modern" ? "slate · steel" : "filament"}</em>
           </div>
         </div>
         <button className="folders-toggle" type="button" onClick={() => setShowFolders((v) => !v)}>
@@ -484,6 +500,25 @@ export default function App() {
           </button>
           <button type="button" onClick={() => setShowKeys(true)}>
             Keys (?)
+          </button>
+          <select
+            className="move-to theme-pick"
+            value={themeId}
+            onChange={(e) => {
+              const id = e.target.value as (typeof THEMES)[number]["id"];
+              setThemeId(id);
+              applyTheme(id);
+            }}
+            aria-label="Theme"
+          >
+            {THEMES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={() => setShowTemplates(true)}>
+            Templates
           </button>
           <button onClick={() => setShowSettings(true)}>Settings</button>
         </div>
@@ -697,6 +732,17 @@ export default function App() {
         </div>
       ) : null}
       {showSettings ? <Settings onClose={() => setShowSettings(false)} /> : null}
+      {showTemplates ? (
+        <Templates
+          onClose={() => setShowTemplates(false)}
+          onUse={(subject, body) => {
+            setComposeSubject(subject);
+            setComposeBody(body);
+            setComposing(true);
+            setShowTemplates(false);
+          }}
+        />
+      ) : null}
       {showKeys ? (
         <div className="keys" role="dialog">
           <strong>Keys</strong>

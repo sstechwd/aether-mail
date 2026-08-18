@@ -114,6 +114,60 @@
   line-height: 1.35;
 }
 
+:root[data-theme="filament"] {
+  color-scheme: dark;
+  --bg: #070708;
+  --bg-raised: #0c0c0e;
+  --panel: #121214;
+  --panel-2: #18181c;
+  --chrome: #050506;
+  --ink: #f4f1ea;
+  --ink-soft: #cfc8ba;
+  --muted: #8a8478;
+  --faint: #5c584f;
+  --line: #2a2824;
+  --line-strong: #3d3a34;
+  --accent: #f0b429;
+  --accent-soft: #f6d077;
+  --accent-dim: #8a6410;
+  --unread: #f6d077;
+  --select: #1c1810;
+  --hover: #14120e;
+  --danger: #e05a3a;
+  --danger-ink: #ffd0c0;
+  --ok: #9bbb6a;
+  --focus: #f0b429;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+  --serif: var(--sans);
+  --top-h: 64px;
+  --status-h: 26px;
+  --folder-w: 176px;
+  --list-w: 280px;
+  --radius: 0;
+  --ease: 160ms ease;
+  --chrome-edge: 1px solid #f0b429;
+  --top-wash: #050506;
+  --mark-ink: #070708;
+  --mark-glow: none;
+  --btn-hover: #222018;
+  --danger-bg: #2a1510;
+  --select-wash: #3a3010;
+}
+
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  background: var(--chrome);
+}
+.splash .mark { width: 56px; height: 56px; font-size: 28px; }
+.splash strong { letter-spacing: 0.18em; text-transform: uppercase; font-size: 12px; }
+.splash em { color: var(--muted); font-style: normal; font-size: 11px; }
+
 * { box-sizing: border-box; }
 
 html,
