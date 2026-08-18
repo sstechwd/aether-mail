@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 
-export type WorkflowAction = "star" | "archive" | "keep";
+export type WorkflowAction = "star" | "archive" | "keep" | "file";
 
 export type MailHint = { subject: string; from: string; body: string };
 
@@ -12,6 +12,7 @@ export type Workflow = {
   action: WorkflowAction;
   auto: true;
   terms: string[];
+  folder?: string;
   matches: (mail: MailHint) => boolean;
 };
 
@@ -43,11 +44,20 @@ export function compileWorkflow(spoken: string): Workflow {
     throw new Error("Workflows never send, delete, or forward. Say star or archive instead.");
   }
   let action: WorkflowAction = "keep";
-  if (/\bstar\b|\bflag\b/i.test(text)) action = "star";
+  let folder: string | undefined;
+  const named = text.match(/folder named\s+([A-Za-z0-9._-]+)/i);
+  const fromAddr = text.match(/from\s+([^\s]+@[^\s,]+)/i);
+  if (named && /\b(move|create|file)\b/i.test(text)) {
+    action = "file";
+    folder = named[1];
+  } else if (/\bstar\b|\bflag\b/i.test(text)) action = "star";
   else if (/\barchive\b|\bfile away\b/i.test(text)) action = "archive";
-  else throw new Error("Say what to do: star or archive. Send/delete are not allowed.");
+  else throw new Error("Say what to do: star, archive, or create a folder and move mail from an address.");
 
-  const terms = extractTerms(text, action);
+  const terms =
+    action === "file"
+      ? [fromAddr?.[1]?.toLowerCase(), folder?.toLowerCase()].filter((x): x is string => Boolean(x))
+      : extractTerms(text, action);
   if (terms.length === 0) throw new Error("Say what to match (invoices, newsletters, a sender).");
 
   return {
@@ -56,7 +66,12 @@ export function compileWorkflow(spoken: string): Workflow {
     action,
     auto: true,
     terms,
-    matches: (mail) => blob(mail).some((t) => terms.some((k) => t.includes(k))),
+    folder,
+    matches: (mail) => {
+      const hay = blob(mail)[0];
+      if (action === "file" && fromAddr) return hay.includes(fromAddr[1].toLowerCase());
+      return terms.some((k) => hay.includes(k));
+    },
   };
 }
 
@@ -77,19 +92,21 @@ function blob(mail: MailHint): string[] {
 }
 
 export function applyWorkflows(
-  rules: Array<Pick<Workflow, "action" | "matches">>,
+  rules: Array<Pick<Workflow, "action" | "matches" | "folder">>,
   mail: MailHint & { id: string },
-): { id: string; apply: WorkflowAction[] } {
+): { id: string; apply: WorkflowAction[]; fileTo?: string } {
   const apply: WorkflowAction[] = [];
+  let fileTo: string | undefined;
   for (const rule of rules) {
     if (rule.matches(mail) && rule.action !== "keep" && !apply.includes(rule.action)) {
       apply.push(rule.action);
+      if (rule.action === "file" && rule.folder) fileTo = rule.folder;
     }
   }
-  return { id: mail.id, apply };
+  return { id: mail.id, apply, fileTo };
 }
 
-type Saved = { id: string; spoken: string; action: WorkflowAction; terms: string[] };
+type Saved = { id: string; spoken: string; action: WorkflowAction; terms: string[]; folder?: string };
 
 export class WorkflowBook {
   constructor(private filePath?: string) {}
@@ -121,7 +138,13 @@ export class WorkflowBook {
   }
 
   add(rule: Workflow): Workflow {
-    this.rows.push({ id: rule.id, spoken: rule.spoken, action: rule.action, terms: rule.terms });
+    this.rows.push({
+      id: rule.id,
+      spoken: rule.spoken,
+      action: rule.action,
+      terms: rule.terms,
+      folder: rule.folder,
+    });
     this.write();
     return rule;
   }

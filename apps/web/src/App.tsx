@@ -38,9 +38,10 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
-  const data = (await res.json()) as T & { error?: string; message?: string };
+  const data = (await res.json()) as T & { error?: string; message?: string; preview?: { to?: string } };
   if (!res.ok) {
-    throw new Error(data.message || data.error || res.statusText);
+    const extra = data.preview?.to ? ` Would send to ${data.preview.to}.` : "";
+    throw new Error((data.message || data.error || res.statusText) + extra);
   }
   return data;
 }
@@ -532,7 +533,11 @@ export default function App() {
                 <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={8} />
               </label>
               <div className="sendrow">
-                <button className="danger" disabled={!draft.trim()} onClick={confirmSend}>
+                <button
+                  className="danger"
+                  disabled={!draft.trim() && selected.folder !== "Drafts"}
+                  onClick={confirmSend}
+                >
                   Confirm send…
                 </button>
                 {sendNote ? <span className="note">{sendNote}</span> : null}
@@ -556,6 +561,10 @@ export default function App() {
         </div>
       ) : null}
       {showSettings ? <Settings onClose={() => setShowSettings(false)} /> : null}
+      <footer className="statusbar">
+        <span>Local client · fixture + IMAP via aether-cli</span>
+        <span>Agent cannot send</span>
+      </footer>
     </div>
   );
 }

@@ -32,6 +32,7 @@ apps/desktop/src-tauri/target/
 *.sqlite-shm
 *.db
 data/*.json
+data/*.jsonl
 
 # Hermes local plans may be committed; caches may not
 .hermes/cache/

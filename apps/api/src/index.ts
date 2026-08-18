@@ -10,6 +10,8 @@ import { allowOrigin, MAX_BODY_BYTES, publicAccount, rejectCrossSite } from "./s
 import { LlmSettings } from "./llm.js";
 import { ChatThread } from "./chat.js";
 import { buildMailCliArgs, runMailCli } from "./mailio.js";
+import { prepareSend } from "./send-prepare.js";
+import { AuditLog } from "./audit.js";
 import { applyWorkflows, compileWorkflows, WorkflowBook } from "./workflows.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
@@ -23,6 +25,7 @@ if (store.listFolders(FIXTURE_ACCOUNT.id).length === 0) {
 const accounts = new AccountBook(path.resolve(here, "../../../data/accounts.json"));
 const llm = new LlmSettings(path.resolve(here, "../../../data/llm.json"));
 const workflows = new WorkflowBook(path.resolve(here, "../../../data/workflows.json"));
+const audit = new AuditLog(path.resolve(here, "../../../data/audit.jsonl"));
 const chat = new ChatThread();
 
 type Draft = { messageId: string; text: string; updatedAt: string };
@@ -44,6 +47,10 @@ function runWorkflows(accountId: string): Array<{ id: string; apply: string[] }>
     });
     if (out.apply.includes("star")) store.setStarred(id, true);
     if (out.apply.includes("archive") && mail.folder === "INBOX") store.move(id, "Archive");
+    if (out.apply.includes("file") && out.fileTo) {
+      store.ensureFolder(accountId, out.fileTo);
+      store.move(id, out.fileTo);
+    }
     if (out.apply.length) applied.push(out);
   }
   return applied;
@@ -313,6 +320,19 @@ const server = http.createServer(async (req, res) => {
       if (!text) return json(res, 400, { error: "need text" }, origin);
       const mail = body.messageId ? store.getMessage(body.messageId) : undefined;
       chat.add("user", text);
+      try {
+        const taught = compileWorkflows(text);
+        if (taught.length) {
+          for (const rule of taught) workflows.add(rule);
+          const ran = runWorkflows(activeAccountId);
+          const summary = `Saved ${taught.length} workflow(s): ${taught.map((r) => r.action + (r.folder ? " → " + r.folder : "")).join(", ")}. Applied to ${ran.length} messages. I will not send or delete.`;
+          chat.add("assistant", summary);
+          audit.append({ actor: "agent", action: "workflow.teach", detail: text.slice(0, 200) });
+          return json(res, 200, { turns: chat.list(), result: { text: summary, model: "rules", refused: [] } }, origin);
+        }
+      } catch {
+        /* not a workflow sentence — fall through to LLM */
+      }
       const cfg = llm.resolve();
       try {
         const result = await chatWithMail({
@@ -427,12 +447,17 @@ const server = http.createServer(async (req, res) => {
         }
         return json(res, 200, { sent: true }, origin);
       }
-      const text = typeof body.draft === "string" ? body.draft : body.draft?.text ?? "";
       const src = body.messageId ? store.getMessage(body.messageId) : undefined;
-      const to = (body.to || src?.to || "").trim();
-      const subject = (body.subject || src?.subject || "").trim();
-      if (!to || !text) {
-        return json(res, 400, { error: "need_to_and_body", message: "Need a recipient and a body before confirm." }, origin);
+      let prepared: { to: string; subject: string; body: string };
+      try {
+        prepared = prepareSend({
+          draft: body.draft,
+          to: body.to,
+          subject: body.subject,
+          source: src ?? null,
+        });
+      } catch (e) {
+        return json(res, 400, { error: "need_to_and_body", message: e instanceof Error ? e.message : String(e) }, origin);
       }
       const confirmId = `send-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       const accountId = body.accountId || accounts.list()[0]?.id;
@@ -440,20 +465,26 @@ const server = http.createServer(async (req, res) => {
         return json(res, 409, {
           error: "send_not_wired",
           message: "Add a real mail account in Settings, then Confirm send. SMTP is not available on the fixture inbox.",
+          preview: prepared,
         }, origin);
       }
       pendingSends.set(confirmId, {
-        to,
-        subject,
-        body: text,
+        to: prepared.to,
+        subject: prepared.subject,
+        body: prepared.body,
         accountId,
         expires: Date.now() + 5 * 60 * 1000,
       });
+      audit.append({ actor: "user", action: "send.prepare", detail: `to=${prepared.to}` });
       return json(res, 202, {
         confirmId,
-        preview: { to, subject },
+        preview: { to: prepared.to, subject: prepared.subject },
         message: "Click Confirm send again to actually deliver. The agent cannot do this for you.",
       }, origin);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/audit") {
+      return json(res, 200, { events: audit.list() }, origin);
     }
 
     return notFound(res);

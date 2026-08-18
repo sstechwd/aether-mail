@@ -22,6 +22,7 @@ export type FolderSummary = {
 
 export class MailStore {
   private messages = new Map<string, FixtureMessage>();
+  private extraFolders = new Map<string, Set<string>>();
   private filePath: string | null = null;
 
   static openMemory(): MailStore {
@@ -85,7 +86,21 @@ export class MailStore {
     if (starredTotal > 0) {
       folders.unshift({ name: "Starred", unread: starredUnread, total: starredTotal });
     }
+    const extras = this.extraFolders.get(accountId);
+    if (extras) {
+      for (const name of extras) {
+        if (!folders.some((f) => f.name === name)) folders.push({ name, unread: 0, total: 0 });
+      }
+    }
     return folders;
+  }
+
+  ensureFolder(accountId: string, name: string): void {
+    const clean = name.trim();
+    if (!clean || clean === "Starred") return;
+    const set = this.extraFolders.get(accountId) ?? new Set<string>();
+    set.add(clean);
+    this.extraFolders.set(accountId, set);
   }
 
   listMessages(accountId: string, folder: string): FixtureMessage[] {
