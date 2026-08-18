@@ -401,6 +401,24 @@ export default function App() {
         />
         <div className="toolbar">
           <button onClick={() => setComposing(true)}>New (c)</button>
+          {savedAccounts[0] ? (
+            <button
+              disabled={!!busy}
+              onClick={() => {
+                const id = savedAccounts[0].id;
+                setBusy("fetch");
+                api<{ count: number }>(`/api/accounts/${id}/sync`, { method: "POST" })
+                  .then((d) => {
+                    setSendNote(`Fetched ${d.count} messages.`);
+                    return refreshFolders().then(() => refreshMessages(folder));
+                  })
+                  .catch((e: Error) => setError(e.message))
+                  .finally(() => setBusy(null));
+              }}
+            >
+              {busy === "fetch" ? "Fetching…" : "Fetch INBOX"}
+            </button>
+          ) : null}
           <button disabled={!selected} onClick={() => starSelected().catch((e: Error) => setError(e.message))}>
             {selected?.starred ? "Unstar (s)" : "Star (s)"}
           </button>

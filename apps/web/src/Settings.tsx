@@ -116,7 +116,7 @@ export default function Settings(props: { onClose: () => void }) {
       </section>
       <section>
         <h2>Agent LLM</h2>
-        <p className="hint">Default is local Ollama. Keys stay in memory, never in llm.json. Lean: 8-turn chat, 256-token cap.</p>
+        <p className="hint">Default is local Ollama. Keys stay in memory, never in llm.json. Lean: 8-turn chat, 80 tokens, 45s timeout.</p>
         <label>
           Model
           <input value={model} onChange={(e) => setModel(e.target.value)} />
