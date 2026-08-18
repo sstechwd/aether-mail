@@ -1,3 +1,4 @@
+import { compareMailDate } from "./mailtext.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -13,6 +14,7 @@ export type FixtureMessage = {
   starred?: boolean;
   body: string;
   headers?: string;
+  hiddenMedia?: number;
 };
 
 export type FolderSummary = {
@@ -111,15 +113,16 @@ export class MailStore {
     this.extraFolders.set(accountId, set);
   }
 
-  listMessages(accountId: string, folder: string): FixtureMessage[] {
+  listMessages(accountId: string, folder: string, order: "newest" | "oldest" = "newest"): FixtureMessage[] {
+    const dir = order === "oldest" ? 1 : -1;
     return [...this.messages.values()]
       .filter((m) => {
         if (m.accountId !== accountId) return false;
         if (folder === "Starred") return Boolean(m.starred);
         return m.folder === folder;
       })
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .map((m) => ({ ...m, body: "" }));
+      .sort((a, b) => dir * compareMailDate(a.date, b.date) || dir * a.id.localeCompare(b.id))
+      .map((m) => ({ ...m, body: "", headers: undefined }));
   }
 
   getMessage(id: string): FixtureMessage | undefined {
@@ -226,7 +229,7 @@ export class MailStore {
           field.toLowerCase().includes(q),
         ),
       )
-      .sort((a, b) => b.date.localeCompare(a.date))
+      .sort((a, b) => compareMailDate(b.date, a.date))
       .map((m) => ({ ...m, body: "" }));
   }
 

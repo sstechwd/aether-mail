@@ -168,6 +168,23 @@
 .splash strong { letter-spacing: 0.18em; text-transform: uppercase; font-size: 12px; }
 .splash em { color: var(--muted); font-style: normal; font-size: 11px; }
 
+.onboard {
+  position: fixed;
+  inset: 0;
+  z-index: 41;
+  display: grid;
+  place-content: center;
+  justify-items: start;
+  gap: 12px;
+  padding: 28px;
+  background: var(--chrome);
+  color: var(--ink);
+  max-width: 100%;
+}
+.onboard strong { font-size: 22px; letter-spacing: -0.02em; }
+.onboard p { max-width: 28rem; color: var(--ink-soft); line-height: 1.5; margin: 0; }
+.onboard .ghost { background: transparent; }
+
 * { box-sizing: border-box; }
 
 html,
@@ -536,7 +553,7 @@ textarea:focus-visible {
 
 .from {
   grid-area: from;
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -553,7 +570,7 @@ textarea:focus-visible {
 
 .subj {
   grid-area: subj;
-  font-size: 13px;
+  font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -596,15 +613,17 @@ textarea:focus-visible {
 
 .body {
   white-space: pre-wrap;
-  font-family: var(--serif);
-  font-size: 15.5px;
-  line-height: 1.55;
-  background: var(--panel);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.65;
+  letter-spacing: 0.01em;
+  background: var(--bg-raised);
   color: var(--ink);
-  padding: 16px 18px;
+  padding: 18px 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   margin: 14px 0 0;
+  max-width: 42rem;
   text-wrap: pretty;
 }
 

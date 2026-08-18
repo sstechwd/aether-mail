@@ -18,6 +18,7 @@ type SavedAccount = { id: string; email: string; provider: string; imap_host: st
 type Folder = { name: string; unread: number; total: number };
 type Message = {
   id: string;
+  accountId?: string;
   folder: string;
   from: string;
   to: string;
@@ -26,6 +27,7 @@ type Message = {
   unread: boolean;
   starred?: boolean;
   body: string;
+  hiddenMedia?: number;
 };
 type AgentResult = {
   skill: string;
@@ -91,6 +93,14 @@ export default function App() {
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [sort, setSort] = useState<"newest" | "oldest">(() => {
+    try {
+      return localStorage.getItem("aether.sort") === "oldest" ? "oldest" : "newest";
+    } catch {
+      return "newest";
+    }
+  });
+  const [showOnboard, setShowOnboard] = useState(false);
   const [splash, setSplash] = useState(true);
   const [themeId, setThemeId] = useState(readTheme);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -118,7 +128,9 @@ export default function App() {
   }
 
   async function refreshMessages(nextFolder: string) {
-    const data = await api<{ messages: Message[] }>(`/api/messages?folder=${encodeURIComponent(nextFolder)}`);
+    const data = await api<{ messages: Message[]; account?: string }>(
+      `/api/messages?folder=${encodeURIComponent(nextFolder)}&sort=${sort}`,
+    );
     setMessages(data.messages);
   }
 
@@ -145,6 +157,11 @@ export default function App() {
       .then((d) => {
         setSavedAccounts(d.accounts);
         if (d.active) setActiveAccountId(d.active);
+        try {
+          if (d.accounts.length === 0 && !localStorage.getItem("aether.onboarded")) setShowOnboard(true);
+        } catch {
+          if (d.accounts.length === 0) setShowOnboard(true);
+        }
       })
       .catch((e: Error) => setError(e.message));
     const tick = () => {
@@ -171,7 +188,7 @@ export default function App() {
     } catch {
       /* ignore */
     }
-  }, [folder]);
+  }, [folder, sort]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -225,7 +242,11 @@ export default function App() {
     return () => clearTimeout(t);
   }, [query]);
 
-  const visible = (hits ?? messages).filter((m) => (unreadOnly ? m.unread : true));
+  const visible = (hits ?? messages).filter((m) => {
+    if (unreadOnly && !m.unread) return false;
+    if (m.accountId && m.accountId !== activeAccountId) return false;
+    return true;
+  });
   const selectedRef = useRef(selected);
   const visibleRef = useRef(visible);
   selectedRef.current = selected;
@@ -457,6 +478,43 @@ export default function App() {
           <em>local · private</em>
         </div>
       ) : null}
+      {showOnboard ? (
+        <div className="onboard" role="dialog">
+          <span className="mark">Æ</span>
+          <strong>Add a mailbox</strong>
+          <p>
+            This is a client, not a host. Use an app password. The fixture inbox stays for practice.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setShowOnboard(false);
+              setShowSettings(true);
+              try {
+                localStorage.setItem("aether.onboarded", "1");
+              } catch {
+                /* ignore */
+              }
+            }}
+          >
+            Add Gmail / IMAP
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              setShowOnboard(false);
+              try {
+                localStorage.setItem("aether.onboarded", "1");
+              } catch {
+                /* ignore */
+              }
+            }}
+          >
+            Use local fixture
+          </button>
+        </div>
+      ) : null}
       <header className="topbar">
         <div className="brand">
           <span className="mark">Æ</span>
@@ -529,6 +587,23 @@ export default function App() {
             Unread (u)
           </button>
           <button onClick={() => setUnreadOnly((v) => !v)}>{unreadOnly ? "All mail" : "Unread only"}</button>
+          <select
+            className="move-to"
+            value={sort}
+            aria-label="Sort"
+            onChange={(e) => {
+              const next = e.target.value === "oldest" ? "oldest" : "newest";
+              setSort(next);
+              try {
+                localStorage.setItem("aether.sort", next);
+              } catch {
+                /* ignore */
+              }
+            }}
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+          </select>
           <button
             onClick={() => {
               api<{ folders: Folder[] }>("/api/folders/read", {
@@ -730,6 +805,11 @@ export default function App() {
                     ].join("\n")
                   : "No stored headers. Fetch INBOX again to keep Return-Path / Auth-Results."}
               </pre>
+            ) : null}
+            {selected.hiddenMedia ? (
+              <p className="hint">
+                {selected.hiddenMedia} image(s) not shown. Remote pictures stay off on purpose — we do not render HTML mail.
+              </p>
             ) : null}
             <pre className="body">{selected.body}</pre>
 

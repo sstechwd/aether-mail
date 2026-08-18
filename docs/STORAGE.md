@@ -1,31 +1,26 @@
 # How mail is stored
 
-Outlook keeps a proprietary **OST** (cached Exchange) or **PST** (archive/export). Thunderbird keeps **MBOX** files plus a profile. We do **not** read those, and we will not become a PST editor.
+Outlook **OST/PST** and Thunderbird **MBOX** are not our format. We do not import them.
 
-## Aether (now and the product)
+## Now (overnight UI)
 
-| What | Where | Format |
-|---|---|---|
-| Fixture / overnight UI | `data/mail.json` | JSON, gitignored |
-| Product engine | SQLite (`mail-store`) | envelopes + FTS5; body on open |
-| Password | Windows Credential Manager | via `aether-cli`, never in SQLite |
-| Settings / templates / audit | `data/*.json` + `data/audit.jsonl` | gitignored |
-| Sibyl memory | `data/sibyl.db` | official SDK SQLite |
+| What | Where |
+|---|---|
+| Messages | `data/mail.json` — **per `accountId`**. Fixture and Gmail are separate rows. |
+| Account last used | `data/meta.json` (`activeAccountId`) |
+| Passwords | Windows Credential Manager only |
+| Templates / audit / Sibyl | `data/` gitignored |
 
-On disk later (Tauri): one app-data folder, one SQLite file per profile. Not OST. Not a second Outlook.
+List payloads have **empty bodies**. Open-by-id loads the body. That is the RAM cap.
 
-We copy **headers first**. Full bodies when you open or fetch. That is why RAM stays bounded.
+## Product (Tauri)
 
-## Real account test (what is left)
+One app-data folder, one **SQLite + FTS5** file per profile (`crates/mail-store`). Backup = copy that folder. Optional later: encrypted zip export the user keeps. **No cloud mailbox. No Aether-hosted inbox.**
 
-1. `cargo build -p aether-cli`  
-2. Settings → Gmail/custom → **app password** → Save (LOGIN+LIST)  
-3. **Fetch INBOX**  
-4. Reply to junk → Confirm send twice  
+## Pictures
 
-OAuth is still Phase 3. Work/school Microsoft often blocks app passwords.
+HTML mail is hostile. We strip tags and **do not show remote images**. A count of hidden `<img>` is shown. Inline `cid:` attachments are a later slice (save to disk, not `innerHTML`).
 
-## Templates
+## What is not this week
 
-**This week:** local snippets in `data/templates.json` (Templates button).  
-**Not this week:** importing Outlook/Thunderbird stationery, a public marketplace, or payments. That is a store + ToS + money. After the client is a daily driver.
+Obsidian plugin, terminal nano-client, marketplace, investor CRM. OSS MIT client first. Money path is still `docs/INCOME.md` (optional Aether+), not a seed deck.

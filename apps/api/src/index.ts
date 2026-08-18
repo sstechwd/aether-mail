@@ -17,7 +17,7 @@ import { PersonaBook } from "./persona.js";
 import { scoreThreat } from "./threat.js";
 import { inspectHeaders, inspectSummary } from "./inspect.js";
 import { InspectBook } from "./inspect-prefs.js";
-import { readableBody, toIsoDate } from "./mailtext.js";
+import { readableBody, toIsoDate, countHiddenMedia } from "./mailtext.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -48,32 +48,43 @@ const sibyl = new SibylMemory(path.resolve(here, "../../../data/sibyl.db"));
 const templates = new TemplateBook(path.resolve(here, "../../../data/templates.json"));
 const inspectPrefs = new InspectBook(path.resolve(here, "../../../data/inspect.json"));
 const chat = new ChatThread();
-let lastFetchAt: string | null = (() => {
+const metaPath = path.resolve(here, "../../../data/meta.json");
+type MetaFile = { lastFetchAt?: string; activeAccountId?: string };
+function readMeta(): MetaFile {
   try {
-    const raw = JSON.parse(fs.readFileSync(path.resolve(here, "../../../data/meta.json"), "utf8")) as {
-      lastFetchAt?: string;
-    };
-    return raw.lastFetchAt ?? null;
+    return JSON.parse(fs.readFileSync(metaPath, "utf8")) as MetaFile;
   } catch {
-    return null;
+    return {};
   }
-})();
-
-function rememberFetch(): void {
-  lastFetchAt = new Date().toISOString();
+}
+function writeMeta(next: MetaFile): void {
   try {
-    const p = path.resolve(here, "../../../data/meta.json");
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, JSON.stringify({ lastFetchAt }, null, 2), "utf8");
+    fs.mkdirSync(path.dirname(metaPath), { recursive: true });
+    fs.writeFileSync(metaPath, JSON.stringify(next, null, 2), "utf8");
   } catch {
     /* ignore */
   }
+}
+const bootMeta = readMeta();
+let lastFetchAt: string | null = bootMeta.lastFetchAt ?? null;
+let activeAccountId: string = bootMeta.activeAccountId || FIXTURE_ACCOUNT.id;
+if (activeAccountId !== FIXTURE_ACCOUNT.id && !accounts.get(activeAccountId)) {
+  activeAccountId = FIXTURE_ACCOUNT.id;
+}
+
+function rememberFetch(): void {
+  lastFetchAt = new Date().toISOString();
+  writeMeta({ lastFetchAt, activeAccountId });
+}
+
+function rememberActive(id: string): void {
+  activeAccountId = id;
+  writeMeta({ lastFetchAt: lastFetchAt ?? undefined, activeAccountId });
 }
 
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
 const pendingSends = new Map<string, { to: string; subject: string; body: string; accountId: string; expires: number }>();
-let activeAccountId: string = FIXTURE_ACCOUNT.id;
 
 function runWorkflows(accountId: string): Array<{ id: string; apply: string[] }> {
   const rules = workflows.list();
@@ -161,7 +172,13 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/messages") {
       const folder = url.searchParams.get("folder") ?? "INBOX";
-      return json(res, 200, { folder, messages: store.listMessages(activeAccountId, folder) });
+      const order = url.searchParams.get("sort") === "oldest" ? "oldest" : "newest";
+      return json(res, 200, {
+        folder,
+        account: activeAccountId,
+        sort: order,
+        messages: store.listMessages(activeAccountId, folder, order),
+      });
     }
 
     if (req.method === "POST" && url.pathname.endsWith("/star") && url.pathname.startsWith("/api/messages/")) {
@@ -251,7 +268,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/search") {
       const q = url.searchParams.get("q") ?? "";
-      return json(res, 200, { q, messages: store.search(FIXTURE_ACCOUNT.id, q) });
+      return json(res, 200, { q, account: activeAccountId, messages: store.search(activeAccountId, q) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/agent/run") {
@@ -351,7 +368,7 @@ const server = http.createServer(async (req, res) => {
         savedIds: accounts.list().map((a) => a.id),
       });
       if (!next) return json(res, 404, { error: "unknown_account" }, origin);
-      activeAccountId = next;
+      rememberActive(next);
       return json(res, 200, { active: activeAccountId, folders: store.listFolders(activeAccountId) }, origin);
     }
 
@@ -578,6 +595,7 @@ const server = http.createServer(async (req, res) => {
           unread: m.unread,
           body: readableBody(m.body || ""),
           headers: m.headers,
+          hiddenMedia: countHiddenMedia(m.body || ""),
         })),
       );
       store.save();
