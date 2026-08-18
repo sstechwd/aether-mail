@@ -1,4 +1,5 @@
 import http from "node:http";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FIXTURE_ACCOUNT, FIXTURE_MAIL } from "./fixture.js";
@@ -34,7 +35,27 @@ const workflows = new WorkflowBook(path.resolve(here, "../../../data/workflows.j
 const audit = new AuditLog(path.resolve(here, "../../../data/audit.jsonl"));
 const persona = new PersonaBook(path.resolve(here, "../../../data/persona.json"));
 const chat = new ChatThread();
-let lastFetchAt: string | null = null;
+let lastFetchAt: string | null = (() => {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.resolve(here, "../../../data/meta.json"), "utf8")) as {
+      lastFetchAt?: string;
+    };
+    return raw.lastFetchAt ?? null;
+  } catch {
+    return null;
+  }
+})();
+
+function rememberFetch(): void {
+  lastFetchAt = new Date().toISOString();
+  try {
+    const p = path.resolve(here, "../../../data/meta.json");
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify({ lastFetchAt }, null, 2), "utf8");
+  } catch {
+    /* ignore */
+  }
+}
 
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
@@ -434,7 +455,7 @@ const server = http.createServer(async (req, res) => {
       );
       store.save();
       activeAccountId = account.id;
-      lastFetchAt = new Date().toISOString();
+      rememberFetch();
       const ran = runWorkflows(account.id);
       return json(res, 200, { folders: store.listFolders(account.id), count: fetched.messages?.length ?? 0, workflows: ran }, origin);
     }
