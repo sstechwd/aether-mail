@@ -35,3 +35,5 @@
 2026-08-16  Workflows: tell the agent in English; star/archive on ingest; never send/delete.
 
 2026-08-17 18:19  3h stretch start. Persona, threat score, new folder, mobile pane swap, INCOME.md. UI agents + cron 21:15 briefing.
+
+2026-08-17 18:38  Spam folder + move-to dropdown + audit viewer. vitest 39.

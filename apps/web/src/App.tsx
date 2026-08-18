@@ -220,7 +220,7 @@ export default function App() {
     if (data.message) await applyMessage(data.message);
   }
 
-  async function moveSelected(dest: "Archive" | "Trash" | "INBOX") {
+  async function moveSelected(dest: string) {
     const current = selectedRef.current;
     if (!current) return;
     const data = await api<{ message: Message; folders: Folder[] }>(`/api/messages/${current.id}/move`, {
@@ -385,6 +385,22 @@ export default function App() {
           <button disabled={!selected} onClick={() => moveSelected("Trash").catch((e: Error) => setError(e.message))}>
             Trash (#)
           </button>
+          <select
+            className="move-to"
+            disabled={!selected}
+            value=""
+            onChange={(e) => {
+              const dest = e.target.value;
+              if (dest) moveSelected(dest).catch((err: Error) => setError(err.message));
+            }}
+          >
+            <option value="">Move to…</option>
+            {folders.filter((f) => f.name !== "Starred").map((f) => (
+              <option key={f.name} value={f.name}>
+                {f.name}
+              </option>
+            ))}
+          </select>
           <button disabled={!selected} onClick={() => replySelected().catch((e: Error) => setError(e.message))}>
             Reply
           </button>

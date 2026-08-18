@@ -34,6 +34,7 @@ export default function Settings(props: { onClose: () => void }) {
   const [allowCloud, setAllowCloud] = useState(false);
   const [spoken, setSpoken] = useState("star invoices and archive newsletters");
   const [rules, setRules] = useState<Array<{ id: string; spoken: string; action: string }>>([]);
+  const [audit, setAudit] = useState<Array<{ at: string; actor: string; action: string; detail: string }>>([]);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,6 +51,9 @@ export default function Settings(props: { onClose: () => void }) {
     api<{ workflows: Array<{ id: string; spoken: string; action: string }> }>("/api/workflows")
       .then((d) => setRules(d.workflows))
       .catch((e: Error) => setNote(e.message));
+    api<{ events: Array<{ at: string; actor: string; action: string; detail: string }> }>("/api/audit")
+      .then((d) => setAudit(d.events.slice().reverse().slice(0, 40)))
+      .catch(() => undefined);
   }, []);
 
   const selected = providers.find((p) => p.id === providerId);
@@ -211,6 +215,16 @@ export default function Settings(props: { onClose: () => void }) {
         >
           Save writing sample
         </button>
+      </section>
+      <section>
+        <h2>Audit (30 days)</h2>
+        <p className="hint">Local log. No mail bodies. Agent cannot send from here.</p>
+        {audit.length === 0 ? <p className="hint">No events yet.</p> : null}
+        {audit.map((e, i) => (
+          <p key={`${e.at}-${i}`} className="acct-line">
+            {e.at.slice(0, 16)} · {e.actor} · {e.action} · {e.detail}
+          </p>
+        ))}
       </section>
       {note ? <p className="note">{note}</p> : null}
     </div>

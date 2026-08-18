@@ -24,6 +24,10 @@ if (store.listFolders(FIXTURE_ACCOUNT.id).length === 0) {
   store.loadFixture(FIXTURE_MAIL);
   store.save();
 }
+store.ensureFolder(FIXTURE_ACCOUNT.id, "Spam");
+store.ensureFolder(FIXTURE_ACCOUNT.id, "Archive");
+store.ensureFolder(FIXTURE_ACCOUNT.id, "Trash");
+store.ensureFolder(FIXTURE_ACCOUNT.id, "Drafts");
 const accounts = new AccountBook(path.resolve(here, "../../../data/accounts.json"));
 const llm = new LlmSettings(path.resolve(here, "../../../data/llm.json"));
 const workflows = new WorkflowBook(path.resolve(here, "../../../data/workflows.json"));

@@ -50,14 +50,19 @@ export function compileWorkflow(spoken: string): Workflow {
   if (named && /\b(move|create|file)\b/i.test(text)) {
     action = "file";
     folder = named[1];
+  } else if (/\bmove\b.+\bto\s+(spam|junk)\b/i.test(text)) {
+    action = "file";
+    folder = "Spam";
   } else if (/\bstar\b|\bflag\b/i.test(text)) action = "star";
   else if (/\barchive\b|\bfile away\b/i.test(text)) action = "archive";
   else throw new Error("Say what to do: star, archive, or create a folder and move mail from an address.");
 
   const terms =
-    action === "file"
-      ? [fromAddr?.[1]?.toLowerCase(), folder?.toLowerCase()].filter((x): x is string => Boolean(x))
-      : extractTerms(text, action);
+    action === "file" && fromAddr
+      ? [fromAddr[1].toLowerCase()]
+      : action === "file"
+        ? extractTerms(text.replace(/\b(move|to|spam|junk|folder|named|create|them|there)\b/gi, " "), "archive")
+        : extractTerms(text, action);
   if (terms.length === 0) throw new Error("Say what to match (invoices, newsletters, a sender).");
 
   return {
