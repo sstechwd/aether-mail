@@ -305,6 +305,11 @@ export default function App() {
         e.preventDefault();
         forwardSelected().catch((err: Error) => setError(err.message));
       }
+      if (e.key === "n") {
+        e.preventDefault();
+        const nxt = rows.find((m) => m.unread && m.id !== current.id);
+        if (nxt) setSelectedId(nxt.id);
+      }
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
         const idx = rows.findIndex((m) => m.id === current.id);

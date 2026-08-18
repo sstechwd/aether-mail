@@ -1,28 +1,25 @@
-# STATUS.md — 3-hour unattended stretch
+# STATUS.md — unattended stretch (still running until 21:00)
 
-**Started:** 2026-08-17 18:15 local  
-**Owner:** Aether. Human away ~3 hours. Do not wait.  
-**Remote:** private. Do not `git push`.  
-**Answer to “status”:** this file.
+**Updated:** 2026-08-17 ~18:41  
+**Do not push.** Private repo.
 
-## This window’s MVP (clickable)
+## Works now (restart MVP + hard refresh)
 
-1. Reply / Confirm send names the **sender** (not you).
-2. Chat can teach: create folder + file from an address.
-3. **Persona:** paste sent-mail samples → drafts sound more like you.
-4. **Spam/threat score** on open mail (local heuristics, not a cloud scanner).
-5. **New folder** in the UI. Status bar: unread + last fetch.
-6. **Phone-usable layout** in the browser (not an App Store build).
-
-## Explicitly out (3 hours)
-
-Native iOS/Android, OAuth, auto-reply (that is send), PDF viewer, public repo, billing, Tauri `.exe`.
+- Reply send uses **sender** as To
+- Chat teaches folder/file/spam rules (no LLM)
+- Persona samples, threat score, Spam, Move to…, `!` = Spam
+- Audit 30 days in Settings
+- Phone: list ↔ read, ← Inbox
+- Unread only, Mark folder read, `n` next unread
+- Status bar: unread / last fetch / agent idle
+- Income: `docs/INCOME.md`
 
 ## Launch
 
-`scripts\start-mvp.bat` → http://127.0.0.1:5173/  
-Phone on the same LAN will **not** work (API is 127.0.0.1 only). Use the phone’s browser against the PC only if we later add a bind you asked for. Default stays localhost.
+`scripts\start-mvp.bat` → http://127.0.0.1:5173/
 
-## Income
+## Still not daily-driver Gmail
 
-See `docs/INCOME.md`. Hermes-shaped: free client, optional Aether+.
+Need app password + Fetch. No OAuth. No store app. No auto-reply.
+
+Tests: cargo green, vitest 41, web build clean.
