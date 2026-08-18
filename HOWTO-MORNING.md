@@ -1,22 +1,27 @@
 # Morning runbook
 
-Ollama should already be running (`ollama serve`). Model: `mistral`.
+Ollama optional (`ollama serve`, model `mistral`) — mail works without it.
 
-From `C:\Users\Sumo\Documents\aether-mail`:
-
-```bash
-npm run test -w @aether/api
-npm run start -w @aether/api     # http://127.0.0.1:8787
-npm run dev -w @aether/web       # http://127.0.0.1:5173
+```
+C:\Users\Sumo\Documents\aether-mail\scripts\start-mvp.bat
 ```
 
-Or double-click `scripts/start-mvp.bat`.
+Open http://127.0.0.1:5173/  (hard-refresh after a pull/restart)
 
-Open http://127.0.0.1:5173/
+## Click through
 
-What you should see:
-- INBOX with 4 fixture messages (one is a prompt-injection phish)
-- Summarize / Draft reply via local Mistral
-- Confirm send… tells you SMTP is not wired (honest)
+- 3-pane + olive/copper theme. Narrow the window for phone panes (← Inbox).
+- Phish fixture: threat score + **Move to Spam**. `!` also files to Spam.
+- **Reply** / Draft reply → Confirm send names the **sender**. Fixture SMTP still honest-fails until a real account.
+- Chat: `Messages from priya@example.com create a folder named Priya and move them there`
+- Chat/Settings: `move newsletters to spam`
+- Settings: Your voice, Workflows, Audit (30 days)
+- **+ New folder**, **Move to…**, Unread only
 
-Not in this build: real IMAP login, Thunderbird source fork, GitHub push.
+## Real mail
+
+`cargo build -p aether-cli` first. App password only. Fetch INBOX. Do not LAN-bind the API.
+
+## Not this build
+
+Native iOS/Android, OAuth, auto-reply, public GitHub, Tauri `.exe`.

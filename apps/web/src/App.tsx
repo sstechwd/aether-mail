@@ -71,6 +71,7 @@ export default function App() {
   const [threat, setThreat] = useState<{ score: number; label: string; reasons: string[] } | null>(null);
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
@@ -156,7 +157,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [query]);
 
-  const visible = hits ?? messages;
+  const visible = (hits ?? messages).filter((m) => (unreadOnly ? m.unread : true));
   const selectedRef = useRef(selected);
   const visibleRef = useRef(visible);
   selectedRef.current = selected;
@@ -414,6 +415,7 @@ export default function App() {
           <button disabled={!selected} onClick={() => unreadSelected().catch((e: Error) => setError(e.message))}>
             Unread (u)
           </button>
+          <button onClick={() => setUnreadOnly((v) => !v)}>{unreadOnly ? "All mail" : "Unread only"}</button>
           <button onClick={() => setShowSettings(true)}>Settings</button>
         </div>
       </header>
