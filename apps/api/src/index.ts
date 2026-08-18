@@ -15,6 +15,7 @@ import { prepareSend } from "./send-prepare.js";
 import { AuditLog } from "./audit.js";
 import { PersonaBook } from "./persona.js";
 import { scoreThreat } from "./threat.js";
+import { readableBody, toIsoDate } from "./mailtext.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -443,6 +444,14 @@ const server = http.createServer(async (req, res) => {
         chat.add("assistant", summary);
         return json(res, 200, { turns: chat.list(), result: { text: summary, model: "rules", refused: [] } }, origin);
       }
+      if (/\b(inbox|what.?s new|recent mail|any mail)\b/i.test(text) && !mail) {
+        const recent = store.listMessages(activeAccountId, "INBOX").slice(0, 8);
+        const summary = recent.length
+          ? `Latest in INBOX (${recent.length}):\n${recent.map((m) => `• ${m.date.slice(0, 10)} ${m.from} — ${m.subject}`).join("\n")}`
+          : "INBOX list is empty. Fetch INBOX first.";
+        chat.add("assistant", summary);
+        return json(res, 200, { turns: chat.list(), result: { text: summary, model: "store", refused: [] } }, origin);
+      }
       try {
         const taught = compileWorkflows(text);
         if (taught.length) {
@@ -506,9 +515,9 @@ const server = http.createServer(async (req, res) => {
           from: m.from,
           to: m.to,
           subject: m.subject,
-          date: m.date || new Date().toISOString(),
+          date: toIsoDate(m.date || ""),
           unread: m.unread,
-          body: m.body,
+          body: readableBody(m.body || ""),
         })),
       );
       store.save();

@@ -438,7 +438,7 @@ export default function App() {
                 setBusy("fetch");
                 api<{ count: number }>(`/api/accounts/${id}/sync`, { method: "POST" })
                   .then((d) => {
-                    setSendNote(`Fetched ${d.count} messages.`);
+                    setSendNote(`Fetched ${d.count} newest messages.`);
                     return refreshFolders().then(() => refreshMessages(folder));
                   })
                   .catch((e: Error) => setError(e.message))
@@ -755,8 +755,14 @@ export default function App() {
       ) : null}
       <footer className="statusbar">
         <span className="sb-unread">{unreadTotal} unread</span>
-        <span className="sb-sync">{lastFetchAt ? `Last fetch ${lastFetchAt.slice(11, 16)} UTC` : "Fixture only — no live fetch yet"}</span>
-        <span className="sb-agent">{busy ? "agent thinking" : "agent idle"}</span>
+        <span className="sb-sync">
+          {busy === "fetch"
+            ? "Fetching newest 40 from IMAP…"
+            : lastFetchAt
+              ? `Last fetch ${lastFetchAt.slice(11, 16)} UTC`
+              : "Fixture only — no live fetch yet"}
+        </span>
+        <span className="sb-agent">{busy === "fetch" ? "IMAP" : busy ? `working: ${busy}` : "idle"}</span>
       </footer>
     </div>
   );

@@ -60,3 +60,5 @@
 2026-08-18  Theme library (retro/modern), chat dots + token bar, chat turns capped 600 chars.
 
 2026-08-18  Filament default theme + splash + local templates. Theme picker no longer needs API.
+
+2026-08-18  Fetch newest 40 + ISO dates + strip HTML. Agent lists inbox locally. Settings fetch bar.

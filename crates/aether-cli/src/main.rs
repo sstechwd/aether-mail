@@ -198,9 +198,28 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
     };
     validate_probe(&ep, &user, &secret).map_err(|e| e.to_string())?;
     let mut session = imap_login(&host, port, &tls, &user, &secret)?;
-    session.select(&folder).map_err(|e| e.to_string())?;
+    let mut seq = "1:40".to_string();
+    if let Ok(mailbox) = session.select(&folder) {
+        let exists = mailbox.exists;
+        if exists == 0 {
+            let _ = session.logout();
+            println!(
+                "{}",
+                serde_json::to_string(&JsonOut {
+                    ok: true,
+                    error: None,
+                    folders: None,
+                    messages: Some(Vec::new()),
+                })
+                .map_err(|e| e.to_string())?
+            );
+            return Ok(());
+        }
+        let start = if exists > 40 { exists - 39 } else { 1 };
+        seq = format!("{start}:{exists}");
+    }
     let fetches = session
-        .fetch("1:40", "(UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)] BODY.PEEK[TEXT]<0.2000>)")
+        .fetch(&seq, "(UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)] BODY.PEEK[TEXT]<0.4000>)")
         .map_err(|e| e.to_string())?;
     let mut messages = Vec::new();
     for item in fetches.iter() {

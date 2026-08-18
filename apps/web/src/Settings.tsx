@@ -39,6 +39,8 @@ export default function Settings(props: { onClose: () => void }) {
   const [memory, setMemory] = useState<Array<{ kind: string; name: string }>>([]);
   const [themeId, setThemeId] = useState<ThemeId>(readTheme);
   const [note, setNote] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api<{ providers: Provider[] }>("/api/providers").then((d) => setProviders(d.providers)).catch((e: Error) => setNote(e.message));
@@ -71,20 +73,23 @@ export default function Settings(props: { onClose: () => void }) {
         <button onClick={props.onClose}>Close</button>
       </header>
       <section>
-        <h2>Mail account</h2>
-        <p className="hint">We are a client. Use a provider app password, not your main login. Password goes to Windows Credential Manager via aether-cli — never into accounts.json or git.</p>
+        <h2>Mail accounts</h2>
+        <p className="hint">App password only. Fetch takes the newest 40 messages, not the oldest. HTML is stripped to text.</p>
         {accounts.map((a) => (
           <p key={a.id} className="acct-line">
             {a.email} · {a.provider} · {a.imap_host}{" "}
             <button
+              disabled={fetching}
               onClick={() => {
-                setNote(null);
+                setNote("Fetching newest 40 from INBOX…");
+                setFetching(true);
                 api<{ count: number }>(`/api/accounts/${a.id}/sync`, { method: "POST" })
-                  .then((d) => setNote(`Fetched ${d.count} messages into the local store.`))
-                  .catch((e: Error) => setNote(e.message));
+                  .then((d) => setNote(`Fetched ${d.count} newest messages.`))
+                  .catch((e: Error) => setNote(e.message))
+                  .finally(() => setFetching(false));
               }}
             >
-              Fetch INBOX
+              {fetching ? "Fetching…" : "Fetch INBOX"}
             </button>{" "}
             <button
               onClick={() => {
@@ -101,6 +106,9 @@ export default function Settings(props: { onClose: () => void }) {
             </button>
           </p>
         ))}
+        {fetching ? <div className="token-bar busy" aria-live="polite"><i /><em>IMAP…</em></div> : null}
+        <h3>Add account</h3>
+        <p className="hint">App password, not your main login. Password goes to Windows Credential Manager.</p>
         <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
           {providers.map((p) => (
             <option key={p.id} value={p.id}>
@@ -115,9 +123,10 @@ export default function Settings(props: { onClose: () => void }) {
           <input placeholder="imap.example.com" value={imapHost} onChange={(e) => setImapHost(e.target.value)} />
         ) : null}
         <button
-          disabled={selected?.unsupported}
+          disabled={selected?.unsupported || saving}
           onClick={() => {
-            setNote(null);
+            setNote("Checking IMAP…");
+            setSaving(true);
             api<{ account: SavedAccount; probe: string }>("/api/accounts", {
               method: "POST",
               body: JSON.stringify({ provider: providerId, email, password, imap_host: imapHost || undefined }),
@@ -127,7 +136,8 @@ export default function Settings(props: { onClose: () => void }) {
                 setPassword("");
                 setNote(d.probe);
               })
-              .catch((e: Error) => setNote(e.message));
+              .catch((e: Error) => setNote(e.message))
+              .finally(() => setSaving(false));
           }}
         >
           Save mail account on this machine
