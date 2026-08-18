@@ -47,7 +47,7 @@ export default function AgentChat(props: { messageId: string | null }) {
     <section className="agent-chat">
       <header>
         <strong>Aether</strong>
-        <span>lean local chat · 8 turns · cannot send</span>
+        <span>local Mistral · ~15–40s on CPU · cannot send</span>
         <button
           onClick={() => {
             fetch("/api/agent/chat", { method: "DELETE" })
@@ -73,7 +73,7 @@ export default function AgentChat(props: { messageId: string | null }) {
         <textarea
           rows={2}
           value={text}
-          placeholder={busy ? "Thinking…" : "Message Aether"}
+          placeholder={busy ? "Thinking… CPU model, give it up to 45s" : "Message Aether"}
           disabled={busy}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { proposeTriage } from "./agent.js";
+import { buildOllamaGenerateBody, proposeTriage } from "./agent.js";
+
+describe("buildOllamaGenerateBody", () => {
+  it("caps tokens so CPU Ollama cannot sit for minutes", () => {
+    const body = buildOllamaGenerateBody({ model: "mistral", prompt: "hi" });
+    expect(body.options.num_predict).toBe(80);
+    expect(body.stream).toBe(false);
+    expect(body.keep_alive).toBe("30m");
+  });
+});
 
 describe("proposeTriage", () => {
   it("stars invoices", () => {

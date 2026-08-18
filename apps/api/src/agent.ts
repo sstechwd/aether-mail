@@ -52,6 +52,22 @@ function taskFor(skill: AgentSkill): string {
 
 import { assertLlmAllowed, buildOpenAiRequest, isLoopbackLlm } from "./llm-policy.js";
 
+export function buildOllamaGenerateBody(opts: { model: string; prompt: string }): {
+  model: string;
+  prompt: string;
+  stream: false;
+  keep_alive: string;
+  options: { num_predict: number; temperature: number };
+} {
+  return {
+    model: opts.model,
+    prompt: opts.prompt,
+    stream: false,
+    keep_alive: "30m",
+    options: { num_predict: 80, temperature: 0.3 },
+  };
+}
+
 export async function completeLocal(opts: {
   prompt: string;
   model?: string;
@@ -78,11 +94,21 @@ export async function completeLocal(opts: {
     return { text: (data.choices?.[0]?.message?.content ?? "").trim(), model };
   }
   const generateUrl = baseUrl.endsWith("/v1") ? `${baseUrl.slice(0, -3)}/api/generate` : `${baseUrl}/api/generate`;
-  const res = await fetch(generateUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, prompt: opts.prompt, stream: false, options: { num_predict: 256 } }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(generateUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildOllamaGenerateBody({ model, prompt: opts.prompt })),
+      signal: AbortSignal.timeout(45_000),
+    });
+  } catch (e) {
+    const name = e instanceof Error ? e.name : "";
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new Error("Ollama took longer than 45s. Model may still be loading — try once more, or use a smaller model.");
+    }
+    throw e;
+  }
   if (!res.ok) {
     const detail = await res.text();
     throw new Error(`LLM ${res.status}: ${detail.slice(0, 200)}`);
@@ -102,7 +128,7 @@ export async function chatWithMail(opts: {
   allowCloud?: boolean;
 }): Promise<{ text: string; model: string; refused: string[] }> {
   const mailBlock = opts.mail
-    ? `Open message:\nFrom: ${opts.mail.from}\nSubject: ${opts.mail.subject}\n${opts.mail.body.slice(0, 2000)}`
+    ? `Open message:\nFrom: ${opts.mail.from}\nSubject: ${opts.mail.subject}\n${opts.mail.body.slice(0, 800)}`
     : "No message is open.";
   const prompt = `${SYSTEM}
 
