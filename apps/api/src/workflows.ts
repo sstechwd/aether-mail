@@ -157,4 +157,12 @@ export class WorkflowBook {
   publicList(): Array<{ id: string; spoken: string; action: WorkflowAction }> {
     return this.rows.map(({ id, spoken, action }) => ({ id, spoken, action }));
   }
+
+  remove(id: string): boolean {
+    const next = this.rows.filter((r) => r.id !== id);
+    if (next.length === this.rows.length) return false;
+    this.rows = next;
+    this.write();
+    return true;
+  }
 }

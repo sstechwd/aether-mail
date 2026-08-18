@@ -167,7 +167,19 @@ export default function Settings(props: { onClose: () => void }) {
         <p className="hint">Tell the agent in English. It stars or archives matching mail when it arrives. It will never send, delete, or forward on its own.</p>
         {rules.map((r) => (
           <p key={r.id} className="acct-line">
-            {r.action} · {r.spoken}
+            {r.action} · {r.spoken}{" "}
+            <button
+              type="button"
+              onClick={() => {
+                api<{ workflows: Array<{ id: string; spoken: string; action: string }> }>(`/api/workflows/${r.id}`, {
+                  method: "DELETE",
+                })
+                  .then((d) => setRules(d.workflows))
+                  .catch((e: Error) => setNote(e.message));
+              }}
+            >
+              Forget
+            </button>
           </p>
         ))}
         <input value={spoken} onChange={(e) => setSpoken(e.target.value)} placeholder="star invoices" />

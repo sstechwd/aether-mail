@@ -480,6 +480,14 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/workflows/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/workflows/".length));
+      const ok = workflows.remove(id);
+      if (!ok) return json(res, 404, { error: "not_found" }, origin);
+      audit.append({ actor: "user", action: "workflow.remove", detail: id });
+      return json(res, 200, { workflows: workflows.publicList() }, origin);
+    }
+
     if (req.method === "POST" && url.pathname === "/api/send") {
       const raw = await readBody(req);
       const body = JSON.parse(raw || "{}") as {

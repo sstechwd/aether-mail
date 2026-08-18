@@ -72,6 +72,8 @@ export default function App() {
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [showFolders, setShowFolders] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
@@ -272,6 +274,16 @@ export default function App() {
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       const current = selectedRef.current;
       const rows = visibleRef.current;
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        e.preventDefault();
+        setShowKeys((v) => !v);
+        return;
+      }
+      if (e.key === "Escape") {
+        setShowKeys(false);
+        setShowFolders(false);
+        return;
+      }
       if (e.key === "c") {
         e.preventDefault();
         setComposing(true);
@@ -378,6 +390,9 @@ export default function App() {
             <em>local fixture · mistral on this machine</em>
           </div>
         </div>
+        <button className="folders-toggle" type="button" onClick={() => setShowFolders((v) => !v)}>
+          Folders
+        </button>
         <input
           className="search"
           placeholder="Search this folder"
@@ -436,11 +451,14 @@ export default function App() {
           >
             Mark folder read
           </button>
+          <button type="button" onClick={() => setShowKeys(true)}>
+            Keys (?)
+          </button>
           <button onClick={() => setShowSettings(true)}>Settings</button>
         </div>
       </header>
 
-      <aside className="folders">
+      <aside className={showFolders ? "folders open" : "folders"}>
         <p className="acct">Accounts</p>
         <p className="acct-line">Local fixture</p>
         {savedAccounts.map((a) => (
@@ -500,6 +518,7 @@ export default function App() {
               setSelectedId(null);
               setAgent(null);
               setSendNote(null);
+              setShowFolders(false);
             }}
           >
             <span>{f.name}</span>
@@ -647,6 +666,16 @@ export default function App() {
         </div>
       ) : null}
       {showSettings ? <Settings onClose={() => setShowSettings(false)} /> : null}
+      {showKeys ? (
+        <div className="keys" role="dialog">
+          <strong>Keys</strong>
+          <p>c new · s star · e archive · # trash · ! spam · u unread · r draft · f forward</p>
+          <p>j/k move · n next unread · ? this list · Esc close</p>
+          <button type="button" onClick={() => setShowKeys(false)}>
+            Close
+          </button>
+        </div>
+      ) : null}
       <footer className="statusbar">
         <span className="sb-unread">{unreadTotal} unread</span>
         <span className="sb-sync">{lastFetchAt ? `Last fetch ${lastFetchAt.slice(11, 16)} UTC` : "Fixture only — no live fetch yet"}</span>
