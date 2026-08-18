@@ -18,11 +18,18 @@ describe("AccountBook", () => {
     expect(JSON.stringify(book.list())).not.toContain("not-a-real-secret");
   });
 
+  it("can remove an account without leaving the password in the file", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "aether-acc-")), "accounts.json");
+    const book = new AccountBook(file);
+    const row = book.add({ provider: "gmail", email: "you@gmail.com", password: "not-a-real-secret" });
+    expect(book.remove(row.id)).toBe(true);
+    expect(book.list()).toHaveLength(0);
+    expect(JSON.stringify(book.list())).not.toContain("not-a-real-secret");
+  });
+
   it("rejects tutanota", () => {
     const file = join(mkdtempSync(join(tmpdir(), "aether-acc-")), "accounts.json");
     const book = new AccountBook(file);
-    expect(() =>
-      book.add({ provider: "tutanota", email: "a@tuta.com", password: "x" }),
-    ).toThrow(/IMAP/);
+    expect(() => book.add({ provider: "tutanota", email: "a@tuta.com", password: "x" })).toThrow(/IMAP/);
   });
 });

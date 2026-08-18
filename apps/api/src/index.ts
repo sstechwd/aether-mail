@@ -293,6 +293,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { providers: PROVIDERS, hosting: false });
     }
 
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/accounts/") && !url.pathname.endsWith("/sync")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/accounts/".length));
+      const ok = accounts.remove(id);
+      if (!ok) return json(res, 404, { error: "not_found" }, origin);
+      audit.append({ actor: "user", action: "account.remove", detail: id });
+      return json(res, 200, { accounts: accounts.list().map(publicAccount) }, origin);
+    }
+
     if (req.method === "GET" && url.pathname === "/api/accounts") {
       return json(res, 200, { accounts: accounts.list().map(publicAccount) }, origin);
     }

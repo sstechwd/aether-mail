@@ -94,6 +94,15 @@ export class AccountBook {
     this.write(rows);
     return row;
   }
+
+  remove(id: string): boolean {
+    const rows = this.read();
+    const found = rows.find((r) => r.id === id);
+    if (!found) return false;
+    secrets.delete(found.secret_ref);
+    this.write(rows.filter((r) => r.id !== id));
+    return true;
+  }
 }
 
 export function hasSecret(ref: string): boolean {

@@ -79,6 +79,19 @@ export default function Settings(props: { onClose: () => void }) {
               }}
             >
               Fetch INBOX
+            </button>{" "}
+            <button
+              onClick={() => {
+                if (!window.confirm(`Remove ${a.email} from this machine?`)) return;
+                api<{ accounts: SavedAccount[] }>(`/api/accounts/${a.id}`, { method: "DELETE" })
+                  .then((d) => {
+                    setAccounts(d.accounts);
+                    setNote("Account removed from this machine.");
+                  })
+                  .catch((e: Error) => setNote(e.message));
+              }}
+            >
+              Remove
             </button>
           </p>
         ))}

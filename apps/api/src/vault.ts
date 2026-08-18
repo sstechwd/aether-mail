@@ -23,6 +23,11 @@ export class SecretVault {
     return this.values.get(ref);
   }
 
+  delete(ref: string): void {
+    this.values.delete(ref);
+    this.order = this.order.filter((k) => k !== ref);
+  }
+
   get size(): number {
     return this.values.size;
   }
