@@ -1,5 +1,5 @@
-/* Aether Mail — night-olive operate theme
-   Tokens + rationale: docs/ui-agent/NOTES.md */
+/* Aether Mail — theme tokens
+   Retro + Modern: docs/ui-agent/THEMES.md · retro rationale: docs/ui-agent/NOTES.md */
 
 :root,
 :root[data-theme="retro"] {
@@ -37,6 +37,23 @@
   --folder-w: 208px;
   --list-w: 320px;
 
+  --radius: 2px;
+  --ease: 0ms;
+  --chrome-edge: 2px solid var(--accent);
+  --top-wash: linear-gradient(180deg, #141910 0%, var(--chrome) 100%);
+  --mark-ink: #1a120c;
+  --mark-glow: 0 0 0 1px #8a5534, 0 6px 16px rgba(196, 120, 74, 0.35);
+  --btn-hover: #2c3426;
+  --danger-bg: #2a1814;
+  --danger-hover: #3a2018;
+  --select-wash: #3a4a2c;
+  --dimmer: rgba(8, 10, 7, 0.62);
+  --threat-danger-bg: #221410;
+  --threat-caution-bg: #22180f;
+  --threat-ok-bg: #161c12;
+  --threat-danger-line: #6a3224;
+  --threat-ok-line: #3a4a30;
+
   font-family: var(--sans);
   font-size: 13px;
   line-height: 1.4;
@@ -44,29 +61,57 @@
 
 :root[data-theme="modern"] {
   color-scheme: dark;
-  --bg: #0e1116;
-  --bg-raised: #141922;
-  --panel: #1a2130;
-  --panel-2: #222b3c;
-  --chrome: #0a0d12;
-  --ink: #eef2f7;
-  --ink-soft: #c5cedb;
-  --muted: #8b97a8;
-  --faint: #5c6778;
-  --line: #2a3344;
-  --line-strong: #3d4a60;
-  --accent: #5b8def;
-  --accent-soft: #8eb0f5;
-  --accent-dim: #3a5aa0;
-  --unread: #9ec0ff;
-  --select: #1c2a44;
-  --hover: #182033;
-  --danger: #e05a5a;
-  --danger-ink: #ffd0d0;
-  --ok: #5dba8c;
-  --focus: #8eb0f5;
-  --shadow: 0 18px 48px rgba(4, 8, 16, 0.55);
+
+  /* Cool night-slate + arctic steel — not olive, not indigo SaaS */
+  --bg: #0a0e14;
+  --bg-raised: #0e141c;
+  --panel: #131a24;
+  --panel-2: #192230;
+  --chrome: #070a10;
+  --ink: #e8eef6;
+  --ink-soft: #b4c0d0;
+  --muted: #7a889c;
+  --faint: #536074;
+  --line: #1e2836;
+  --line-strong: #2c3a4e;
+  --accent: #3db8d4;
+  --accent-soft: #86d4e6;
+  --accent-dim: #1d6f84;
+  --unread: #8fd0e4;
+  --select: #122530;
+  --hover: #141e28;
+  --danger: #e06662;
+  --danger-ink: #ffd2ce;
+  --ok: #45b894;
+  --focus: #86d4e6;
+  --shadow: 0 10px 32px rgba(2, 6, 12, 0.55);
+
   --serif: var(--sans);
+
+  --top-h: 42px;
+  --status-h: 20px;
+  --folder-w: 180px;
+  --list-w: 280px;
+
+  --radius: 6px;
+  --ease: 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  --chrome-edge: 1px solid var(--line);
+  --top-wash: linear-gradient(180deg, #10161e 0%, var(--chrome) 100%);
+  --mark-ink: #061016;
+  --mark-glow: 0 0 0 1px #1d6f84, 0 4px 14px rgba(61, 184, 212, 0.3);
+  --btn-hover: #223040;
+  --danger-bg: #2a1516;
+  --danger-hover: #3a1c1e;
+  --select-wash: #1a3848;
+  --dimmer: rgba(4, 8, 14, 0.7);
+  --threat-danger-bg: #241416;
+  --threat-caution-bg: #132028;
+  --threat-ok-bg: #102018;
+  --threat-danger-line: #6a3230;
+  --threat-ok-line: #2a4a40;
+
+  font-size: 12.5px;
+  line-height: 1.35;
 }
 
 * { box-sizing: border-box; }
@@ -81,7 +126,7 @@ body,
 }
 
 ::selection {
-  background: #3a4a2c;
+  background: var(--select-wash);
   color: var(--ink);
 }
 
@@ -197,8 +242,8 @@ textarea:focus-visible {
   gap: 8px 16px;
   row-gap: 6px;
   padding: 0 14px;
-  border-bottom: 2px solid var(--accent);
-  background: linear-gradient(180deg, #141910 0%, var(--chrome) 100%);
+  border-bottom: var(--chrome-edge);
+  background: var(--top-wash);
   min-width: 0;
   min-height: var(--top-h);
   position: relative;
@@ -219,12 +264,12 @@ textarea:focus-visible {
   display: grid;
   place-items: center;
   background: var(--accent);
-  color: #1a120c;
+  color: var(--mark-ink);
   font-weight: 750;
   font-size: 16px;
   letter-spacing: -0.04em;
   border-radius: 4px;
-  box-shadow: 0 0 0 1px #8a5534, 0 6px 16px rgba(196, 120, 74, 0.35);
+  box-shadow: var(--mark-glow);
 }
 
 .brand strong {
@@ -251,7 +296,7 @@ textarea:focus-visible {
   color: var(--ink);
   padding: 6px 10px;
   font: inherit;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 .search::placeholder { color: var(--faint); }
@@ -324,7 +369,7 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   padding: 6px 8px;
   font: inherit;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 .folder {
@@ -339,7 +384,7 @@ textarea:focus-visible {
   text-align: left;
   cursor: pointer;
   font-size: 13px;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 .folder:hover { background: var(--hover); color: var(--ink); }
@@ -489,7 +534,7 @@ textarea:focus-visible {
   color: var(--ink);
   padding: 16px 18px;
   border: 1px solid var(--line);
-  border-radius: 2px;
+  border-radius: var(--radius);
   margin: 14px 0 0;
   text-wrap: pretty;
 }
@@ -501,7 +546,7 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   background: var(--bg-raised);
   padding: 0;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 .agent header {
@@ -589,7 +634,7 @@ textarea:focus-visible {
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 0;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 .agent-chat header {
@@ -710,9 +755,9 @@ textarea:focus-visible {
   gap: 18px;
   align-content: start;
   box-shadow:
-    0 0 0 100vmax rgba(8, 10, 7, 0.62),
+    0 0 0 100vmax var(--dimmer),
     var(--shadow);
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 .settings header {
@@ -774,7 +819,7 @@ textarea:focus-visible {
   gap: 8px;
   z-index: 5;
   box-shadow: var(--shadow);
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 .compose strong {
@@ -790,7 +835,7 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   padding: 7px 8px;
   font: inherit;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 /* ——— Controls ——— */
@@ -803,11 +848,11 @@ button {
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 button:hover:not(:disabled) {
-  background: #2c3426;
+  background: var(--btn-hover);
   border-color: var(--line-strong);
 }
 
@@ -819,11 +864,11 @@ button:disabled {
 button.danger {
   border-color: var(--danger);
   color: var(--danger-ink);
-  background: #2a1814;
+  background: var(--danger-bg);
 }
 
 button.danger:hover:not(:disabled) {
-  background: #3a2018;
+  background: var(--danger-hover);
 }
 
 .meta,
@@ -847,7 +892,7 @@ textarea {
   border: 1px solid var(--line);
   padding: 10px;
   font: inherit;
-  border-radius: 2px;
+  border-radius: var(--radius);
   resize: vertical;
 }
 
@@ -925,8 +970,8 @@ input[type="checkbox"] {
     background: var(--bg-raised);
     border-right: 1px solid var(--line-strong);
     box-shadow:
-      10px 0 28px rgba(6, 8, 5, 0.5),
-      100vw 0 0 100vw rgba(8, 10, 7, 0.5);
+      10px 0 28px var(--dimmer),
+      100vw 0 0 100vw var(--dimmer);
     animation: drawer-in 0.16s ease-out;
   }
 
@@ -1021,13 +1066,13 @@ input[type="checkbox"] {
   gap: 8px;
   background: var(--panel);
   border: 1px solid var(--line-strong);
-  border-radius: 2px;
+  border-radius: var(--radius);
   padding: 14px 16px 12px;
   max-width: min(360px, calc(100vw - 24px));
   font-size: 12px;
   color: var(--ink-soft);
   box-shadow:
-    0 0 0 100vmax rgba(8, 10, 7, 0.5),
+    0 0 0 100vmax var(--dimmer),
     var(--shadow);
 }
 
@@ -1069,27 +1114,27 @@ input[type="checkbox"] {
   font-size: 12px;
   line-height: 1.45;
   border: 1px solid var(--line);
-  border-radius: 2px;
+  border-radius: var(--radius);
   background: var(--bg-raised);
   color: var(--ink-soft);
 }
 
 .threat.danger {
   color: var(--danger-ink);
-  border-color: #6a3224;
-  background: #221410;
+  border-color: var(--threat-danger-line);
+  background: var(--threat-danger-bg);
 }
 
 .threat.caution {
   color: var(--accent-soft);
   border-color: var(--accent-dim);
-  background: #22180f;
+  background: var(--threat-caution-bg);
 }
 
 .threat.ok {
   color: var(--ok);
-  border-color: #3a4a30;
-  background: #161c12;
+  border-color: var(--threat-ok-line);
+  background: var(--threat-ok-bg);
 }
 
 .threat button {
@@ -1101,7 +1146,7 @@ input[type="checkbox"] {
 .threat.danger button {
   border-color: var(--danger);
   color: var(--danger-ink);
-  background: #2a1814;
+  background: var(--danger-bg);
 }
 
 .move-to {
@@ -1109,7 +1154,7 @@ input[type="checkbox"] {
   background: var(--panel-2);
   color: var(--ink);
   border: 1px solid var(--line);
-  border-radius: 2px;
+  border-radius: var(--radius);
   font: inherit;
   font-size: 12px;
   padding: 4px 22px 4px 8px;
@@ -1123,7 +1168,7 @@ input[type="checkbox"] {
 }
 
 .move-to:hover:not(:disabled) {
-  background-color: #2c3426;
+  background-color: var(--btn-hover);
   border-color: var(--line-strong);
 }
 
@@ -1165,6 +1210,181 @@ input[type="checkbox"] {
   66% { content: "· · ·"; }
 }
 .theme-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ——— Modern: denser chrome, fluid hover, instrument chat ——— */
+
+:root[data-theme="modern"] .topbar {
+  padding: 0 12px;
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+
+:root[data-theme="modern"] .brand {
+  min-width: 188px;
+  gap: 8px;
+}
+
+:root[data-theme="modern"] .brand .mark {
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+  border-radius: var(--radius);
+}
+
+:root[data-theme="modern"] .folders {
+  padding: 6px 4px 10px;
+}
+
+:root[data-theme="modern"] .acct {
+  margin: 10px 8px 4px;
+}
+
+:root[data-theme="modern"] .folder,
+:root[data-theme="modern"] .row,
+:root[data-theme="modern"] button,
+:root[data-theme="modern"] .move-to,
+:root[data-theme="modern"] .search {
+  transition:
+    background-color var(--ease),
+    color var(--ease),
+    border-color var(--ease),
+    box-shadow var(--ease);
+}
+
+:root[data-theme="modern"] .folder {
+  padding: 4px 8px;
+  font-size: 12.5px;
+}
+
+:root[data-theme="modern"] .folder.on,
+:root[data-theme="modern"] .row.on {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+:root[data-theme="modern"] .row {
+  padding: 5px 10px 5px 18px;
+  min-height: 38px;
+}
+
+:root[data-theme="modern"] .row.unread .from::before {
+  top: 10px;
+  width: 5px;
+  height: 5px;
+}
+
+:root[data-theme="modern"] .read {
+  padding: 14px 18px 20px;
+}
+
+:root[data-theme="modern"] .headers h1 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+:root[data-theme="modern"] .body {
+  font-size: 14.5px;
+  line-height: 1.5;
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+
+:root[data-theme="modern"] .agent {
+  margin-top: 14px;
+}
+
+:root[data-theme="modern"] .agent-chat {
+  margin-top: 12px;
+}
+
+:root[data-theme="modern"] .agent-chat header {
+  padding: 5px 8px;
+}
+
+:root[data-theme="modern"] .turn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+:root[data-theme="modern"] .chat-input {
+  padding: 6px;
+}
+
+:root[data-theme="modern"] .chat-input textarea {
+  min-height: 38px;
+  padding: 6px 8px;
+}
+
+:root[data-theme="modern"] .statusbar,
+:root[data-theme="modern"] .shell::after {
+  padding: 0 8px;
+  font-size: 10.5px;
+}
+
+/* .chat-wait .dots is the wait chrome — drop the CSS thinking line */
+:root[data-theme="modern"] .agent-chat:has(textarea:disabled) .turns::after {
+  content: none;
+  display: none;
+}
+
+:root[data-theme="modern"] .chat-wait .dots {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 0 0 0 2px;
+  border-radius: 50%;
+  vertical-align: 2px;
+  background: var(--accent);
+  box-shadow:
+    8px 0 0 var(--accent-soft),
+    16px 0 0 var(--accent-dim);
+  animation: modern-dots 1.05s ease-in-out infinite;
+}
+
+:root[data-theme="modern"] .chat-wait .dots::after {
+  content: none;
+  animation: none;
+}
+
+@keyframes modern-dots {
+  0%, 100% {
+    opacity: 0.35;
+    transform: translateY(1px);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+
+:root[data-theme="modern"] .token-bar {
+  height: 13px;
+  margin: 5px 8px 6px;
+  background: var(--panel-2);
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+:root[data-theme="modern"] .token-bar i {
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent) 60%, var(--accent-soft));
+  border-radius: inherit;
+  transition: width 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root[data-theme="modern"] .token-bar em {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+
+:root[data-theme="modern"] .settings {
+  padding: 16px 18px 18px;
+  gap: 14px;
+}
+
+:root[data-theme="modern"] .compose {
+  padding: 10px;
+  gap: 6px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

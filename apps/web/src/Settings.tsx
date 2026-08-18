@@ -258,7 +258,7 @@ export default function Settings(props: { onClose: () => void }) {
       </section>
       <section>
         <h2>Theme</h2>
-        <p className="hint">Retro is the original olive/copper. Modern is the library slot. Custom skins later = CSS variables only.</p>
+        <p className="hint">Retro is the original olive/copper desk. Modern is a denser slate skin — steel accent, smoother hover. Custom later = CSS variables only.</p>
         <div className="theme-row">
           {themes.map((t) => (
             <button
