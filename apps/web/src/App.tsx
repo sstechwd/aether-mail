@@ -77,6 +77,17 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [sendNote, setSendNote] = useState<string | null>(null);
   const [threat, setThreat] = useState<{ score: number; label: string; reasons: string[] } | null>(null);
+  const [inspect, setInspect] = useState<{
+    label: string;
+    findings: string[];
+    spf: string;
+    dkim: string;
+    dmarc: string;
+    fromDomain: string;
+    returnPathDomain: string;
+    receivedHops: number;
+  } | null>(null);
+  const [showInspect, setShowInspect] = useState(false);
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -148,14 +159,31 @@ export default function App() {
     if (!selectedId) {
       setSelected(null);
       setThreat(null);
+      setInspect(null);
+      setShowInspect(false);
       return;
     }
-    api<{ message: Message; draft: { text: string } | null; threat?: { score: number; label: string; reasons: string[] } }>(
-      `/api/messages/${selectedId}`,
-    )
+    api<{
+      message: Message;
+      draft: { text: string } | null;
+      threat?: { score: number; label: string; reasons: string[] };
+      inspect?: {
+        label: string;
+        findings: string[];
+        spf: string;
+        dkim: string;
+        dmarc: string;
+        fromDomain: string;
+        returnPathDomain: string;
+        receivedHops: number;
+      } | null;
+      autoOpen?: boolean;
+    }>(`/api/messages/${selectedId}`)
       .then((data) => {
         setSelected(data.message);
         setThreat(data.threat ?? null);
+        setInspect(data.inspect ?? null);
+        setShowInspect(Boolean(data.autoOpen));
         if (data.draft?.text) setDraft(data.draft.text);
         setMessages((prev) => prev.map((m) => (m.id === selectedId ? { ...m, unread: false } : m)));
         refreshFolders().catch(() => undefined);
@@ -651,7 +679,28 @@ export default function App() {
                     Move to Spam
                   </button>
                 ) : null}
+                <button className="inline" type="button" onClick={() => setShowInspect((v) => !v)}>
+                  {showInspect ? "Hide headers" : "Inspect headers"}
+                </button>
               </p>
+            ) : (
+              <p className="threat ok">
+                <button className="inline" type="button" onClick={() => setShowInspect((v) => !v)}>
+                  Inspect headers
+                </button>
+              </p>
+            )}
+            {showInspect ? (
+              <pre className="inspect">
+                {inspect
+                  ? [
+                      `spf=${inspect.spf}  dkim=${inspect.dkim}  dmarc=${inspect.dmarc}  hops=${inspect.receivedHops}`,
+                      inspect.fromDomain ? `From ${inspect.fromDomain}` : "From domain unknown",
+                      inspect.returnPathDomain ? `Return-Path ${inspect.returnPathDomain}` : "No Return-Path",
+                      ...(inspect.findings.length ? inspect.findings : ["No header mismatches."]),
+                    ].join("\n")
+                  : "No stored headers. Fetch INBOX again to keep Return-Path / Auth-Results."}
+              </pre>
             ) : null}
             <pre className="body">{selected.body}</pre>
 

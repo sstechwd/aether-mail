@@ -12,6 +12,7 @@ export type FixtureMessage = {
   unread: boolean;
   starred?: boolean;
   body: string;
+  headers?: string;
 };
 
 export type FolderSummary = {
@@ -59,6 +60,13 @@ export class MailStore {
   loadFixture(rows: FixtureMessage[]): void {
     for (const row of rows) {
       this.messages.set(row.id, { ...row, starred: row.starred ?? false });
+    }
+  }
+
+  fillMissingHeaders(rows: FixtureMessage[]): void {
+    for (const row of rows) {
+      const found = this.messages.get(row.id);
+      if (found && !found.headers && row.headers) found.headers = row.headers;
     }
   }
 

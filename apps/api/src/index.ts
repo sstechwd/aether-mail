@@ -15,6 +15,8 @@ import { prepareSend } from "./send-prepare.js";
 import { AuditLog } from "./audit.js";
 import { PersonaBook } from "./persona.js";
 import { scoreThreat } from "./threat.js";
+import { inspectHeaders, inspectSummary } from "./inspect.js";
+import { InspectBook } from "./inspect-prefs.js";
 import { readableBody, toIsoDate } from "./mailtext.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
@@ -29,6 +31,8 @@ const store = MailStore.openFile(dataFile);
 if (store.listFolders(FIXTURE_ACCOUNT.id).length === 0) {
   store.loadFixture(FIXTURE_MAIL);
   store.save();
+} else {
+  store.fillMissingHeaders(FIXTURE_MAIL);
 }
 store.ensureFolder(FIXTURE_ACCOUNT.id, "Spam");
 store.ensureFolder(FIXTURE_ACCOUNT.id, "Archive");
@@ -41,6 +45,7 @@ const audit = new AuditLog(path.resolve(here, "../../../data/audit.jsonl"));
 const persona = new PersonaBook(path.resolve(here, "../../../data/persona.json"));
 const sibyl = new SibylMemory(path.resolve(here, "../../../data/sibyl.db"));
 const templates = new TemplateBook(path.resolve(here, "../../../data/templates.json"));
+const inspectPrefs = new InspectBook(path.resolve(here, "../../../data/inspect.json"));
 const chat = new ChatThread();
 let lastFetchAt: string | null = (() => {
   try {
@@ -223,7 +228,24 @@ const server = http.createServer(async (req, res) => {
       if (!message) return notFound(res);
       store.markRead(id);
       const threat = scoreThreat(message);
-      return json(res, 200, { message, draft: drafts.get(id) ?? null, threat });
+      const prefs = inspectPrefs.read();
+      const inspect = message.headers ? inspectHeaders(message.headers) : null;
+      if (inspect && inspect.label !== "ok") {
+        for (const f of inspect.findings) {
+          if (!threat.reasons.includes(f)) threat.reasons.push(f);
+        }
+        if (inspect.label === "danger" && threat.score < 70) {
+          threat.score = 70;
+          threat.label = "danger";
+        } else if (inspect.label === "caution" && threat.label === "ok") {
+          threat.label = "caution";
+          threat.score = Math.max(threat.score, 40);
+        }
+      }
+      const autoOpen = Boolean(
+        inspect && ((prefs.autoInspect && inspect.label !== "ok") || prefs.alwaysShow),
+      );
+      return json(res, 200, { message, draft: drafts.get(id) ?? null, threat, inspect, autoOpen }, origin);
     }
 
     if (req.method === "GET" && url.pathname === "/api/search") {
@@ -381,6 +403,16 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { llm: llm.publicView() }, origin);
     }
 
+    if (req.method === "GET" && url.pathname === "/api/settings/inspect") {
+      return json(res, 200, { inspect: inspectPrefs.read() }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/settings/inspect") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { autoInspect?: boolean; alwaysShow?: boolean };
+      return json(res, 200, { inspect: inspectPrefs.save(body) }, origin);
+    }
+
     if (req.method === "POST" && url.pathname === "/api/settings/llm") {
       const raw = await readBody(req);
       const body = JSON.parse(raw || "{}") as {
@@ -452,6 +484,19 @@ const server = http.createServer(async (req, res) => {
         chat.add("assistant", summary);
         return json(res, 200, { turns: chat.list(), result: { text: summary, model: "store", refused: [] } }, origin);
       }
+      if (/\b(inspect|headers?|who sent|spf|dkim|dmarc|suspect)\b/i.test(text)) {
+        if (!mail?.headers) {
+          const summary = mail
+            ? "No stored headers on this message. Fetch INBOX again (newest 40) so Return-Path / Auth-Results are kept."
+            : "Open a message first, then say inspect headers.";
+          chat.add("assistant", summary);
+          return json(res, 200, { turns: chat.list(), result: { text: summary, model: "inspect", refused: [] } }, origin);
+        }
+        const report = inspectHeaders(mail.headers);
+        const summary = inspectSummary(report);
+        chat.add("assistant", summary);
+        return json(res, 200, { turns: chat.list(), result: { text: summary, model: "inspect", refused: [] } }, origin);
+      }
       try {
         const taught = compileWorkflows(text);
         if (taught.length) {
@@ -518,6 +563,7 @@ const server = http.createServer(async (req, res) => {
           date: toIsoDate(m.date || ""),
           unread: m.unread,
           body: readableBody(m.body || ""),
+          headers: m.headers,
         })),
       );
       store.save();

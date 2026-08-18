@@ -60,6 +60,7 @@ export type MailCliResult = {
     date: string;
     unread: boolean;
     body: string;
+    headers?: string;
   }>;
 };
 

@@ -41,6 +41,8 @@ export default function Settings(props: { onClose: () => void }) {
   const [note, setNote] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [autoInspect, setAutoInspect] = useState(true);
+  const [alwaysShow, setAlwaysShow] = useState(false);
 
   useEffect(() => {
     api<{ providers: Provider[] }>("/api/providers").then((d) => setProviders(d.providers)).catch((e: Error) => setNote(e.message));
@@ -61,6 +63,12 @@ export default function Settings(props: { onClose: () => void }) {
       .catch(() => undefined);
     api<{ hits: Array<{ kind: string; name: string }> }>("/api/memory")
       .then((d) => setMemory(d.hits ?? []))
+      .catch(() => undefined);
+    api<{ inspect: { autoInspect: boolean; alwaysShow: boolean } }>("/api/settings/inspect")
+      .then((d) => {
+        setAutoInspect(d.inspect.autoInspect);
+        setAlwaysShow(d.inspect.alwaysShow);
+      })
       .catch(() => undefined);
   }, []);
 
@@ -142,6 +150,40 @@ export default function Settings(props: { onClose: () => void }) {
         >
           Save mail account on this machine
         </button>
+      </section>
+      <section>
+        <h2>Header inspect</h2>
+        <p className="hint">
+          Local only. Compares From vs Return-Path and reads SPF/DKIM/DMARC. Not a cloud scanner. Chat “inspect headers” skips Ollama.
+        </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={autoInspect}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setAutoInspect(v);
+              api("/api/settings/inspect", { method: "POST", body: JSON.stringify({ autoInspect: v, alwaysShow }) }).catch(
+                (err: Error) => setNote(err.message),
+              );
+            }}
+          />
+          Auto-open inspect when a message looks suspect
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={alwaysShow}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setAlwaysShow(v);
+              api("/api/settings/inspect", { method: "POST", body: JSON.stringify({ autoInspect, alwaysShow: v }) }).catch(
+                (err: Error) => setNote(err.message),
+              );
+            }}
+          />
+          Prefer showing the header panel (you can still hide it)
+        </label>
       </section>
       <section>
         <h2>Agent LLM</h2>

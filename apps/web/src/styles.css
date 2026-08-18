@@ -1266,6 +1266,18 @@ input[type="checkbox"] {
 .token-bar.busy i { width: 40%; animation: bar 1.1s ease-in-out infinite; }
 @keyframes bar { 50% { width: 90%; } }
 
+.inspect {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink-soft);
+}
+.threat .inline { margin-left: 8px; }
+
 /* ——— Modern: denser chrome, fluid hover, instrument chat ——— */
 
 :root[data-theme="modern"] .topbar {

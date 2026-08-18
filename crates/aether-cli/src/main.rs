@@ -31,6 +31,7 @@ struct Fetched {
     date: String,
     unread: bool,
     body: String,
+    headers: String,
 }
 
 fn main() -> ExitCode {
@@ -219,7 +220,10 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
         seq = format!("{start}:{exists}");
     }
     let fetches = session
-        .fetch(&seq, "(UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)] BODY.PEEK[TEXT]<0.4000>)")
+        .fetch(
+            &seq,
+            "(UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE RETURN-PATH REPLY-TO RECEIVED AUTHENTICATION-RESULTS MESSAGE-ID)] BODY.PEEK[TEXT]<0.4000>)",
+        )
         .map_err(|e| e.to_string())?;
     let mut messages = Vec::new();
     for item in fetches.iter() {
@@ -239,7 +243,8 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
             subject: header_field(&header_txt, "Subject"),
             date: header_field(&header_txt, "Date"),
             unread,
-            body: String::from_utf8_lossy(text).chars().take(2000).collect(),
+            body: String::from_utf8_lossy(text).chars().take(4000).collect(),
+            headers: header_txt.chars().take(4000).collect(),
         });
     }
     let _ = session.logout();

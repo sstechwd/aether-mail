@@ -62,3 +62,5 @@
 2026-08-18  Filament default theme + splash + local templates. Theme picker no longer needs API.
 
 2026-08-18  Fetch newest 40 + ISO dates + strip HTML. Agent lists inbox locally. Settings fetch bar.
+
+2026-08-18  Header inspect: From vs Return-Path, SPF/DKIM/DMARC. Settings auto-open on suspect. Chat inspect is local.
