@@ -139,7 +139,20 @@ impl MailStore {
                 secret_ref TEXT NOT NULL,
                 auth_method TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS extra_folders (
+                account_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                PRIMARY KEY (account_id, name)
+            );
             "#,
+        )?;
+        Ok(())
+    }
+
+    pub fn ensure_folder(&self, account_id: &str, name: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO extra_folders (account_id, name) VALUES (?1, ?2)",
+            params![account_id, name],
         )?;
         Ok(())
     }
@@ -195,7 +208,21 @@ impl MailStore {
                 total: row.get(2)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+        let mut folders = rows.collect::<rusqlite::Result<Vec<FolderSummary>>>()?;
+        let mut extra = self.conn.prepare("SELECT name FROM extra_folders WHERE account_id = ?1")?;
+        let extras = extra.query_map(params![account_id], |row| row.get::<_, String>(0))?;
+        for name in extras {
+            let name = name?;
+            if !folders.iter().any(|f| f.name == name) {
+                folders.push(FolderSummary {
+                    name,
+                    unread: 0,
+                    total: 0,
+                });
+            }
+        }
+        folders.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(folders)
     }
 
     pub fn list_messages(&self, account_id: &str, folder: &str) -> Result<Vec<StoredMessage>> {
