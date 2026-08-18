@@ -127,6 +127,15 @@ export class MailStore {
     }
   }
 
+  markFolderRead(accountId: string, folder: string): void {
+    for (const msg of this.messages.values()) {
+      if (msg.accountId === accountId && (folder === "Starred" ? msg.starred : msg.folder === folder)) {
+        msg.unread = false;
+      }
+    }
+    this.save();
+  }
+
   markUnread(id: string): void {
     const found = this.messages.get(id);
     if (found) {

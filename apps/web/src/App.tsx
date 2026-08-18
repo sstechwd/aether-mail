@@ -416,6 +416,21 @@ export default function App() {
             Unread (u)
           </button>
           <button onClick={() => setUnreadOnly((v) => !v)}>{unreadOnly ? "All mail" : "Unread only"}</button>
+          <button
+            onClick={() => {
+              api<{ folders: Folder[] }>("/api/folders/read", {
+                method: "POST",
+                body: JSON.stringify({ folder }),
+              })
+                .then((d) => {
+                  setFolders(d.folders);
+                  return refreshMessages(folder);
+                })
+                .catch((e: Error) => setError(e.message));
+            }}
+          >
+            Mark folder read
+          </button>
           <button onClick={() => setShowSettings(true)}>Settings</button>
         </div>
       </header>

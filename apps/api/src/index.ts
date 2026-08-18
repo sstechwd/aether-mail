@@ -233,6 +233,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { result, draft: drafts.get(message.id) ?? null });
     }
 
+    if (req.method === "POST" && url.pathname === "/api/folders/read") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { folder?: string };
+      const name = body.folder ?? "INBOX";
+      store.markFolderRead(activeAccountId, name);
+      return json(res, 200, { folders: store.listFolders(activeAccountId) }, origin);
+    }
+
     if (req.method === "POST" && url.pathname === "/api/folders") {
       const raw = await readBody(req);
       const body = JSON.parse(raw || "{}") as { name?: string };

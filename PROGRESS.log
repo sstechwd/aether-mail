@@ -39,3 +39,5 @@
 2026-08-17 18:38  Spam folder + move-to dropdown + audit viewer. vitest 39.
 
 2026-08-17 18:39  ! = Spam, danger mail gets Move to Spam. Audit test. vitest 40.
+
+2026-08-17 18:40  Mark folder read. vitest 41.
