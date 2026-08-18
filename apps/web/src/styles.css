@@ -78,7 +78,7 @@ textarea:focus-visible {
   height: 100%;
   display: grid;
   grid-template-columns: var(--folder-w) var(--list-w) 1fr;
-  grid-template-rows: var(--top-h) 1fr var(--status-h);
+  grid-template-rows: auto 1fr var(--status-h);
   grid-template-areas:
     "top top top"
     "folders list read"
@@ -165,11 +165,16 @@ textarea:focus-visible {
   grid-area: top;
   display: flex;
   align-items: center;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  row-gap: 6px;
   padding: 0 12px;
   border-bottom: 1px solid var(--line);
   background: var(--chrome);
   min-width: 0;
+  min-height: var(--top-h);
+  position: relative;
+  z-index: 7;
 }
 
 .brand {
@@ -223,14 +228,23 @@ textarea:focus-visible {
 .toolbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
   margin-left: auto;
   justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
 }
 
-.toolbar button {
+.toolbar button,
+.toolbar .move-to {
   padding: 4px 8px;
   font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.toolbar .move-to {
+  padding-right: 22px;
 }
 
 /* ——— Folders ——— */
@@ -858,16 +872,31 @@ input[type="checkbox"] {
   }
 
   .folders { display: none; }
-  .folders-toggle { display: inline-block; }
+
+  .folders-toggle {
+    display: inline-flex;
+    align-items: center;
+    letter-spacing: 0.04em;
+  }
+
+  .shell:has(.folders.open) .folders-toggle {
+    background: var(--select);
+    border-color: var(--line-strong);
+    box-shadow: inset 2px 0 0 var(--ok);
+  }
+
   .folders.open {
     display: block;
     position: fixed;
-    z-index: 15;
-    left: 0;
-    top: 48px;
-    bottom: var(--status-h);
-    width: min(280px, 86vw);
-    box-shadow: 8px 0 24px #0008;
+    z-index: 6;
+    inset: var(--top-h) auto var(--status-h) 0;
+    width: min(80vw, 280px);
+    background: var(--bg-raised);
+    border-right: 1px solid var(--line-strong);
+    box-shadow:
+      10px 0 28px rgba(6, 8, 5, 0.5),
+      100vw 0 0 100vw rgba(8, 10, 7, 0.5);
+    animation: drawer-in 0.16s ease-out;
   }
 
   .read {
@@ -905,7 +934,11 @@ input[type="checkbox"] {
     order: 3;
   }
 
-  .toolbar { margin-left: 0; }
+  .toolbar {
+    margin-left: 0;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
 
   .compose {
     left: 8px;
@@ -917,6 +950,13 @@ input[type="checkbox"] {
   .settings {
     inset: 0;
     border-radius: 0;
+  }
+
+  .keys {
+    left: 8px;
+    right: 8px;
+    bottom: calc(var(--status-h) + 8px);
+    max-width: none;
   }
 
   .shell.has-mail {
@@ -933,39 +973,132 @@ input[type="checkbox"] {
 
 .folders-toggle { display: none; }
 .back-phone { display: none; }
+
+@keyframes drawer-in {
+  from { transform: translateX(-12px); opacity: 0.4; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* ——— Keys dialog ——— */
+
 .keys {
   position: fixed;
   right: 16px;
   bottom: calc(var(--status-h) + 16px);
   z-index: 20;
+  display: grid;
+  gap: 8px;
   background: var(--panel);
-  border: 1px solid var(--line);
-  padding: 12px 14px;
-  max-width: 360px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 14px 16px 12px;
+  max-width: min(360px, calc(100vw - 24px));
   font-size: 12px;
   color: var(--ink-soft);
+  box-shadow:
+    0 0 0 100vmax rgba(8, 10, 7, 0.5),
+    var(--shadow);
 }
-.keys strong { display: block; color: var(--ink); margin-bottom: 6px; }
+
+.keys strong {
+  display: block;
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.keys p {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.keys button {
+  justify-self: start;
+  margin-top: 2px;
+}
+
+/* ——— Threat banner + move-to ——— */
 
 .threat {
-  margin: 0 0 8px;
-  padding: 8px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  font-family: var(--mono);
   font-size: 12px;
+  line-height: 1.45;
   border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--bg-raised);
+  color: var(--ink-soft);
 }
-.threat.danger { color: var(--danger); border-color: var(--danger); }
-.threat.caution { color: var(--accent-soft); }
-.threat.ok { color: var(--ok); }
+
+.threat.danger {
+  color: var(--danger-ink);
+  border-color: #6a3224;
+  background: #221410;
+}
+
+.threat.caution {
+  color: var(--accent-soft);
+  border-color: var(--accent-dim);
+  background: #22180f;
+}
+
+.threat.ok {
+  color: var(--ok);
+  border-color: #3a4a30;
+  background: #161c12;
+}
+
+.threat button {
+  margin-left: auto;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.threat.danger button {
+  border-color: var(--danger);
+  color: var(--danger-ink);
+  background: #2a1814;
+}
+
 .move-to {
-  background: var(--panel);
+  appearance: none;
+  background: var(--panel-2);
   color: var(--ink);
   border: 1px solid var(--line);
+  border-radius: 2px;
   font: inherit;
   font-size: 12px;
-  padding: 4px 6px;
+  padding: 4px 22px 4px 8px;
+  cursor: pointer;
+  max-width: 9.5rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 11px) calc(50% - 2px), calc(100% - 7px) calc(50% - 2px);
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
 }
-.threat button {
-  margin-left: 8px;
+
+.move-to:hover:not(:disabled) {
+  background-color: #2c3426;
+  border-color: var(--line-strong);
+}
+
+.move-to:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 @media (prefers-reduced-motion: reduce) {
