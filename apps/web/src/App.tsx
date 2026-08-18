@@ -99,6 +99,7 @@ export default function App() {
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
+  const [activeAccountId, setActiveAccountId] = useState("fixture");
   const [adding, setAdding] = useState(false);
   const [providerId, setProviderId] = useState("gmail");
   const [email, setEmail] = useState("");
@@ -121,13 +122,30 @@ export default function App() {
     setMessages(data.messages);
   }
 
+  function selectAccount(id: string) {
+    setBusy("switch");
+    api<{ active: string; folders: Folder[] }>(`/api/accounts/${id}/select`, { method: "POST" })
+      .then((d) => {
+        setActiveAccountId(d.active);
+        setFolders(d.folders);
+        setSelectedId(null);
+        setFolder("INBOX");
+        return refreshMessages("INBOX");
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(null));
+  }
+
   useEffect(() => {
     refreshFolders().catch((e: Error) => setError(e.message));
     api<{ providers: Provider[] }>("/api/providers")
       .then((d) => setProviders(d.providers))
       .catch((e: Error) => setError(e.message));
-    api<{ accounts: SavedAccount[] }>("/api/accounts")
-      .then((d) => setSavedAccounts(d.accounts))
+    api<{ accounts: SavedAccount[]; active?: string }>("/api/accounts")
+      .then((d) => {
+        setSavedAccounts(d.accounts);
+        if (d.active) setActiveAccountId(d.active);
+      })
       .catch((e: Error) => setError(e.message));
     const tick = () => {
       api<{ lastFetchAt: string | null; unread: number }>("/api/health")
@@ -458,11 +476,11 @@ export default function App() {
         />
         <div className="toolbar">
           <button onClick={() => setComposing(true)}>New (c)</button>
-          {savedAccounts[0] ? (
+          {savedAccounts[0] && activeAccountId !== "fixture" ? (
             <button
               disabled={!!busy}
               onClick={() => {
-                const id = savedAccounts[0].id;
+                const id = activeAccountId;
                 setBusy("fetch");
                 api<{ count: number }>(`/api/accounts/${id}/sync`, { method: "POST" })
                   .then((d) => {
@@ -554,11 +572,22 @@ export default function App() {
 
       <aside className={showFolders ? "folders open" : "folders"}>
         <p className="acct">Accounts</p>
-        <p className="acct-line">Local fixture</p>
+        <button
+          type="button"
+          className={activeAccountId === "fixture" ? "acct-line on" : "acct-line"}
+          onClick={() => selectAccount("fixture")}
+        >
+          Local fixture
+        </button>
         {savedAccounts.map((a) => (
-          <p key={a.id} className="acct-line">
+          <button
+            key={a.id}
+            type="button"
+            className={activeAccountId === a.id ? "acct-line on" : "acct-line"}
+            onClick={() => selectAccount(a.id)}
+          >
             {a.email}
-          </p>
+          </button>
         ))}
         <button className="folder" onClick={() => setAdding((v) => !v)}>
           {adding ? "Close" : "Add account"}

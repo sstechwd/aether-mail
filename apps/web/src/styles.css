@@ -400,10 +400,25 @@ textarea:focus-visible {
 .acct:first-child { margin-top: 4px; }
 
 .acct-line {
+  display: block;
+  width: calc(100% - 16px);
   margin: 0 8px 4px;
+  padding: 6px 8px;
+  text-align: left;
+  font: inherit;
   font-size: 12px;
   color: var(--ink-soft);
   line-height: 1.35;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.acct-line:hover { background: var(--hover); color: var(--ink); }
+.acct-line.on {
+  background: var(--select);
+  color: var(--ink);
+  border-color: var(--line);
 }
 
 .add-acc {

@@ -22,6 +22,7 @@ import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
 import { SibylMemory } from "./sibyl.js";
+import { resolveAccountSwitch } from "./account-switch.js";
 import { applyWorkflows, compileWorkflows, WorkflowBook } from "./workflows.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
@@ -333,12 +334,25 @@ const server = http.createServer(async (req, res) => {
       if (row) {
         void runMailCli(buildMailCliArgs({ action: "secret-delete", secretRef: row.secret_ref }));
       }
+      if (activeAccountId === id) activeAccountId = FIXTURE_ACCOUNT.id;
       audit.append({ actor: "user", action: "account.remove", detail: id });
       return json(res, 200, { accounts: accounts.list().map(publicAccount) }, origin);
     }
 
     if (req.method === "GET" && url.pathname === "/api/accounts") {
-      return json(res, 200, { accounts: accounts.list().map(publicAccount) }, origin);
+      return json(res, 200, { accounts: accounts.list().map(publicAccount), active: activeAccountId }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/api/accounts/") && url.pathname.endsWith("/select")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/accounts/".length, -"/select".length));
+      const next = resolveAccountSwitch({
+        requested: id,
+        fixtureId: FIXTURE_ACCOUNT.id,
+        savedIds: accounts.list().map((a) => a.id),
+      });
+      if (!next) return json(res, 404, { error: "unknown_account" }, origin);
+      activeAccountId = next;
+      return json(res, 200, { active: activeAccountId, folders: store.listFolders(activeAccountId) }, origin);
     }
 
     if (req.method === "POST" && url.pathname === "/api/accounts") {
