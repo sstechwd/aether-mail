@@ -403,6 +403,14 @@ const server = http.createServer(async (req, res) => {
       if (!text) return json(res, 400, { error: "need text" }, origin);
       const mail = body.messageId ? store.getMessage(body.messageId) : undefined;
       chat.add("user", text);
+      if (/^(what|list|show)\b.*\b(rule|workflow)/i.test(text) || /^(rules|workflows)\??$/i.test(text)) {
+        const listed = workflows.publicList();
+        const summary = listed.length
+          ? `I have ${listed.length} rule(s):\n${listed.map((r) => `• ${r.action} — ${r.spoken}`).join("\n")}`
+          : "No workflows yet. Tell me in English, e.g. star invoices.";
+        chat.add("assistant", summary);
+        return json(res, 200, { turns: chat.list(), result: { text: summary, model: "rules", refused: [] } }, origin);
+      }
       try {
         const taught = compileWorkflows(text);
         if (taught.length) {
