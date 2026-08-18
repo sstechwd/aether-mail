@@ -273,9 +273,28 @@ impl MailStore {
     }
 
     pub fn move_to(&self, id: &str, folder: &str) -> Result<()> {
+        let account: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT account_id FROM messages WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?;
         self.conn.execute(
             "UPDATE messages SET folder = ?1 WHERE id = ?2",
             params![folder, id],
+        )?;
+        if let Some(account_id) = account {
+            self.ensure_folder(&account_id, folder)?;
+        }
+        Ok(())
+    }
+
+    pub fn mark_folder_read(&self, account_id: &str, folder: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE messages SET unread = 0 WHERE account_id = ?1 AND folder = ?2",
+            params![account_id, folder],
         )?;
         Ok(())
     }
