@@ -58,7 +58,13 @@ function formatWhen(iso: string): string {
 
 export default function App() {
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [folder, setFolder] = useState("INBOX");
+  const [folder, setFolder] = useState(() => {
+    try {
+      return localStorage.getItem("aether.folder") || "INBOX";
+    } catch {
+      return "INBOX";
+    }
+  });
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Message | null>(null);
@@ -122,6 +128,11 @@ export default function App() {
 
   useEffect(() => {
     refreshMessages(folder).catch((e: Error) => setError(e.message));
+    try {
+      localStorage.setItem("aether.folder", folder);
+    } catch {
+      /* ignore */
+    }
   }, [folder]);
 
   useEffect(() => {
