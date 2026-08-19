@@ -12,7 +12,10 @@
     "dev:web": "npm run dev -w @aether/web",
     "dev:api": "npm run dev -w @aether/api",
     "test": "npm run test -w @aether/api",
-    "build": "npm run build -w @aether/web && npm run build -w @aether/api"
+    "build": "npm run build -w @aether/web && npm run build -w @aether/api",
+    "desktop:dev": "tauri dev --config apps/desktop/tauri.conf.json",
+    "desktop:build": "npm run sidecar:build && tauri build --config apps/desktop/tauri.conf.json",
+    "sidecar:build": "node scripts/build-sidecar.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.0"

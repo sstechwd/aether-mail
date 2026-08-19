@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { appRoot } from "./approot.js";
 
 export type MemoryHit = { kind: string; name: string; body: unknown };
 
@@ -106,7 +106,7 @@ function stringifyBody(body: unknown): string {
 }
 
 function findScript(): string | null {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const candidate = path.resolve(here, "../../../scripts/sibyl_aether.py");
+  // appRoot() is already the repo/install root — do not walk up from it.
+  const candidate = path.join(appRoot(), "scripts", "sibyl_aether.py");
   return existsSync(candidate) ? candidate : null;
 }

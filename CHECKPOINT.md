@@ -1,8 +1,8 @@
 # CHECKPOINT — Aether Mail
 
 **Read this first in a new chat. It replaces re-reading the codebase.**
-**Last updated:** 2026-08-19 (MIME session) · branch `main`, **local commits not pushed**.
-Green: **vitest 71/32**, **cargo 22 mail-core + workspace pass**, **clippy clean**, web build ok. ~7,000 LOC.
+**Last updated:** 2026-08-19 (MIME + Tauri session) · branch `main`, **local commits not pushed**.
+Green: **vitest 75/33**, **cargo workspace pass**, **clippy clean**, **installer builds**. ~7,400 LOC.
 
 ---
 
@@ -17,9 +17,9 @@ MIT core; money later = optional hosted models (Aether+), never paywalling mail.
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Desktop shell (target) | **Tauri 2** | `.exe`, not Electron. NOT scaffolded yet — still Vite tab. |
+| Desktop shell | **Tauri 2** (`apps/desktop`) | **BUILT.** `aether-desktop.exe` 11MB + NSIS installer 25MB. Owns the window, spawns the API sidecar, kills it on close. |
 | Frontend | **React 19 + TS + Vite + Tailwind-ish CSS vars** | `apps/web` |
-| UI host (temporary) | **Node HTTP API** `apps/api` (port 8787) | Scaffold. Product backend is Rust. JS never speaks IMAP/SMTP. |
+| UI host (temporary) | **Node HTTP API** `apps/api` (port 8787) | Ships as a **Node SEA sidecar** (`npm run sidecar:build`) — 86KB of app inside an 89MB node runtime. No Node install needed. Product backend is still Rust. |
 | Mail I/O | **Rust `aether-cli`** (async-imap, lettre, mail-parser) | spawned by Node. Password via stdin→keyring, never argv. |
 | MIME | **`mail-parser` 0.11 in `crates/mail-core/src/mime.rs`** | Real multipart/QP/base64/RFC2047. `parse_message`, `parse_fetched`, `part_bytes`, `preview`. |
 | Store (product) | **SQLite + FTS5** (`crates/mail-store`) | Envelopes + body-on-open. Overnight UI still uses `data/mail.json`. |
@@ -43,7 +43,8 @@ apps/web/src/     App.tsx (main 3-pane), Settings.tsx, AgentChat.tsx, Templates.
 crates/           aether-cli (mail I/O + `part` cmd), mail-store (SQLite), mail-core (+mime.rs), aether-secrets
 docs/             ARCHITECTURE, ROADMAP, SECURITY, STORAGE, INCOME, SIBYL, CONVENTIONS (binding), adr/
 data/             *.json + *.jsonl (gitignored). mail.json, accounts.json, sibyl.db, meta.json
-scripts/          start-mvp.bat (boot API+Vite), sibyl_aether.py
+apps/desktop/     Tauri 2 shell: src/lib.rs (sidecar lifecycle), tauri.conf.json, icons/, sidecar/ (gitignored build output)
+scripts/          start-mvp.bat (boot API+Vite), sibyl_aether.py, build-sidecar.mjs
 ```
 
 ## 4. Working features (verified)
@@ -72,10 +73,11 @@ from the message's own bytes (no network) and rendered as `data:` in the sandbox
 
 ## 6. Next work (priority order)
 
-1. **Daily-driver gate**: user confirms real Gmail fetch reads clean + one real Confirm send works end-to-end.
-2. **Tauri shell**: scaffold the `.exe`, drop the Node+browser tax. Move store to SQLite for real.
+1. **Daily-driver gate**: user confirms real Gmail fetch reads clean + one real Confirm send works end-to-end **from the installed app**.
+2. **Shrink the sidecar**: 89MB is Node's runtime, not our code (86KB). Porting the ~20 API routes into the Tauri Rust process drops the installer from 25MB to ~8MB and removes Node entirely. Biggest single win available.
 3. **OAuth** (Gmail/Microsoft) — work/school tenants block app passwords.
-4. Later/ideas (NOT now): Obsidian export, terminal nano-client, template marketplace, Aether+ billing.
+4. **SQLite store**: overnight UI still reads `data/mail.json`; `crates/mail-store` is ready.
+5. Later/ideas (NOT now): Obsidian export, terminal nano-client, template marketplace, Aether+ billing.
 
 ## 7. Boot / verify
 
@@ -86,6 +88,10 @@ scripts/start-mvp.bat            # API :8787 + Vite :5173
 cargo build -p aether-cli        # REQUIRED before real fetch/send
 npm run test -w @aether/api      # vitest
 npm run build -w @aether/web     # tsc + vite
+
+npm run sidecar:build            # API -> self-contained .exe (needed before a desktop build)
+cargo tauri build --config apps/desktop/tauri.conf.json   # -> target/release/bundle/nsis/*.exe
+cd target/release && ./aether-desktop.exe                 # run the built app
 ```
 Ports already in use = already running; don't start a second. UI blank = Vite down, restart + Ctrl+F5.
 
@@ -95,5 +101,7 @@ Ports already in use = already running; don't start a second. UI blank = Vite do
   test mailbox had one** — all 40 live newsletters use remote images. Needs one real attachment to confirm.
 - Attachment bytes stream through the Node API; a >2MB inline part is refused by the CLI on purpose.
 - Rust store (SQLite) exists but overnight UI still uses `data/mail.json` — migration pending.
-- No OAuth. No Tauri. Node RAM secret fallback if CLI unbuilt.
+- No OAuth. Node RAM secret fallback if CLI unbuilt.
+- Installer is **unsigned** — Windows SmartScreen will warn a stranger until we have a cert.
+- Sidecar is 89MB (Node runtime). Our API is 86KB of it. See Next work #2.
 - `imap-proto 0.10.2` future-incompat warning (upstream, harmless).

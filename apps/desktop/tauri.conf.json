@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Aether Mail",
+  "version": "0.1.0",
+  "identifier": "dev.aether.mail",
+  "build": {
+    "frontendDist": "../web/dist",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeDevCommand": "npm run dev -w @aether/web",
+    "beforeBuildCommand": "npm run build -w @aether/web"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Aether Mail",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "decorations": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://127.0.0.1:8787 ws://127.0.0.1:5173",
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "copyright": "MIT",
+    "category": "Productivity",
+    "shortDescription": "Local-first email client with an on-device agent",
+    "longDescription": "Aether Mail is a local-first desktop email client. Your mailbox stays on your machine, passwords live in the OS keyring, and the built-in agent can draft but never sends without two human clicks.",
+    "externalBin": ["sidecar/aether-api"],
+    "resources": {
+      "../../target/release/aether-cli.exe": "aether-cli.exe",
+      "../../scripts/sibyl_aether.py": "scripts/sibyl_aether.py"
+    }
+  }
+}

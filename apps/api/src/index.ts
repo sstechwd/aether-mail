@@ -1,7 +1,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { appRoot } from "./approot.js";
 import { FIXTURE_ACCOUNT, FIXTURE_MAIL } from "./fixture.js";
 import { runAgent, chatWithMail, type AgentSkill } from "./agent.js";
 import { MailStore } from "./store.js";
@@ -34,8 +34,8 @@ import { resolveAccountSwitch } from "./account-switch.js";
 import { applyWorkflows, compileWorkflows, WorkflowBook } from "./workflows.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
-const here = path.dirname(fileURLToPath(import.meta.url));
-const dataFile = process.env.AETHER_MAIL_FILE ?? path.resolve(here, "../../../data/mail.json");
+const here = appRoot();
+const dataFile = process.env.AETHER_MAIL_FILE ?? path.join(here, "data/mail.json");
 const store = MailStore.openFile(dataFile);
 if (store.listFolders(FIXTURE_ACCOUNT.id).length === 0) {
   store.loadFixture(FIXTURE_MAIL);
@@ -47,16 +47,16 @@ store.ensureFolder(FIXTURE_ACCOUNT.id, "Spam");
 store.ensureFolder(FIXTURE_ACCOUNT.id, "Archive");
 store.ensureFolder(FIXTURE_ACCOUNT.id, "Trash");
 store.ensureFolder(FIXTURE_ACCOUNT.id, "Drafts");
-const accounts = new AccountBook(path.resolve(here, "../../../data/accounts.json"));
-const llm = new LlmSettings(path.resolve(here, "../../../data/llm.json"));
-const workflows = new WorkflowBook(path.resolve(here, "../../../data/workflows.json"));
-const audit = new AuditLog(path.resolve(here, "../../../data/audit.jsonl"));
-const persona = new PersonaBook(path.resolve(here, "../../../data/persona.json"));
-const sibyl = new SibylMemory(path.resolve(here, "../../../data/sibyl.db"));
-const templates = new TemplateBook(path.resolve(here, "../../../data/templates.json"));
-const inspectPrefs = new InspectBook(path.resolve(here, "../../../data/inspect.json"));
+const accounts = new AccountBook(path.join(here, "data/accounts.json"));
+const llm = new LlmSettings(path.join(here, "data/llm.json"));
+const workflows = new WorkflowBook(path.join(here, "data/workflows.json"));
+const audit = new AuditLog(path.join(here, "data/audit.jsonl"));
+const persona = new PersonaBook(path.join(here, "data/persona.json"));
+const sibyl = new SibylMemory(path.join(here, "data/sibyl.db"));
+const templates = new TemplateBook(path.join(here, "data/templates.json"));
+const inspectPrefs = new InspectBook(path.join(here, "data/inspect.json"));
 const chat = new ChatThread();
-const metaPath = path.resolve(here, "../../../data/meta.json");
+const metaPath = path.join(here, "data/meta.json");
 type MetaFile = { lastFetchAt?: string; activeAccountId?: string };
 function readMeta(): MetaFile {
   try {

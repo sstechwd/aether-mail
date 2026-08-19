@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { appRoot } from "./approot.js";
 
 export type MailCliAction = "probe" | "fetch" | "part" | "send" | "secret-put" | "secret-delete";
 
@@ -39,8 +39,7 @@ export function buildMailCliArgs(input: {
 
 export function findMailCli(): string | null {
   if (process.env.AETHER_CLI && existsSync(process.env.AETHER_CLI)) return process.env.AETHER_CLI;
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const root = path.resolve(here, "../../..");
+  const root = appRoot();
   const names = process.platform === "win32" ? ["aether-cli.exe"] : ["aether-cli"];
   for (const profile of ["release", "debug"]) {
     for (const name of names) {

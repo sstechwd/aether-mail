@@ -25,6 +25,14 @@ dist-ssr/
 
 # Tauri
 apps/desktop/src-tauri/target/
+apps/desktop/gen/
+
+# Built sidecar: an 89MB Node runtime with the API embedded. Rebuild it with
+# `npm run sidecar:build` — never commit it.
+apps/desktop/sidecar/*.exe
+apps/desktop/sidecar/aether-api.cjs
+apps/desktop/sidecar/aether-api.mjs
+apps/desktop/sidecar/*.blob
 
 # Test / local data
 *.sqlite

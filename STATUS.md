@@ -1,15 +1,21 @@
 # STATUS.md — morning briefing
 
-**Updated:** 2026-08-19 (MIME session) · private repo · **local commits waiting, not pushed** — say the word.
+**Updated:** 2026-08-19 (MIME + Tauri session) · private repo · **local commits waiting, not pushed** — say the word.
 
 For full technical state, read **`CHECKPOINT.md`** first. This file is the human-facing "what to click" version.
 
 ## How to start
 
+**It's a real app now.** Double-click the installer, or run the built exe:
+
 ```
-scripts\start-mvp.bat
+target\release\bundle\nsis\Aether Mail_0.1.0_x64-setup.exe    <- install it
+target\release\aether-desktop.exe                             <- or just run it
 ```
-→ http://127.0.0.1:5173/ — hard-refresh after restart. `cargo build -p aether-cli` first if you changed Rust.
+No terminal, no browser tab, no Node install. Windows will warn that it's from an
+unknown publisher — that's the missing code-signing cert, not a problem with the app.
+
+Still want the dev loop? `scripts\start-mvp.bat` → http://127.0.0.1:5173/
 
 ## What works
 
@@ -26,7 +32,12 @@ base64 decoded, accented and emoji subjects correct. Checked against your live i
 0 garbled subjects, 0 MIME leaks.** Attachments now show as a strip under the header and download on
 click; inline `cid:` images are pulled from the message's own bytes (no network, no tracker risk).
 
-Tests: **vitest 71/71**, **cargo green + clippy clean**, web build ok.
+**Also new — Aether Mail is a downloadable desktop app.** Tauri 2 shell, 11MB exe, 25MB installer.
+It opens its own window, starts its own backend, and shuts it down when you close it. Verified the
+way a stranger would get it: I dropped the backend alone into an empty folder with no repo and no
+Node installed, and it booted and served mail.
+
+Tests: **vitest 75/75**, **cargo green + clippy clean**, installer builds.
 
 ## What to click
 
@@ -39,7 +50,9 @@ Tests: **vitest 71/71**, **cargo green + clippy clean**, web build ok.
 ## Still not a daily driver
 
 - No OAuth (app password only — some work/school tenants block this)
-- No Tauri `.exe` yet — still the Vite tab
+- Installer is unsigned (SmartScreen warning). Needs a code-signing cert (~$100-400/yr) before public release
+- The bundled backend is 89MB because it carries Node's runtime; our code is 86KB of that. Porting it to
+  Rust would cut the installer to ~8MB — that's the next big win
 - Attachments/inline images work in tests, but **none of your 40 fetched newsletters actually had one** —
   send yourself a mail with a PDF and an inline logo to confirm it on real mail
 - Overnight store is still `data/mail.json`, not the Rust SQLite store yet

@@ -1,0 +1,7 @@
+{
+  "main": "aether-api.cjs",
+  "output": "aether-api-sea.blob",
+  "disableExperimentalSEAWarning": true,
+  "useSnapshot": false,
+  "useCodeCache": false
+}
