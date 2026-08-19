@@ -92,6 +92,9 @@ export default function App() {
   const [showInspect, setShowInspect] = useState(false);
   const [mailHtml, setMailHtml] = useState<string | null>(null);
   const [remoteImages, setRemoteImages] = useState(0);
+  const [attachments, setAttachments] = useState<
+    Array<{ part: number; filename: string; mimeType: string; size: number; human: string }>
+  >([]);
   const [imagesOn, setImagesOn] = useState(false);
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
@@ -209,6 +212,13 @@ export default function App() {
       html?: string | null;
       remoteImages?: number;
       imagesOn?: boolean;
+      attachments?: Array<{
+        part: number;
+        filename: string;
+        mimeType: string;
+        size: number;
+        human: string;
+      }>;
       draft: { text: string } | null;
       threat?: { score: number; label: string; reasons: string[] };
       inspect?: {
@@ -228,6 +238,7 @@ export default function App() {
         setMailHtml(data.html ?? null);
         setRemoteImages(data.remoteImages ?? 0);
         setImagesOn(Boolean(data.imagesOn));
+        setAttachments(data.attachments ?? []);
         setThreat(data.threat ?? null);
         setInspect(data.inspect ?? null);
         setShowInspect(Boolean(data.autoOpen));
@@ -817,6 +828,25 @@ export default function App() {
                     ].join("\n")
                   : "No stored headers. Fetch INBOX again to keep Return-Path / Auth-Results."}
               </pre>
+            ) : null}
+            {attachments.length > 0 ? (
+              <div className="attachments">
+                <span className="attachments-label">
+                  {attachments.length} attachment{attachments.length === 1 ? "" : "s"}
+                </span>
+                {attachments.map((a) => (
+                  <a
+                    key={a.part}
+                    className="attachment"
+                    href={`/api/messages/${encodeURIComponent(selectedId ?? "")}/parts/${a.part}`}
+                    download={a.filename}
+                    title={`${a.mimeType} · ${a.human}`}
+                  >
+                    <span className="attachment-name">{a.filename}</span>
+                    <span className="attachment-size">{a.human}</span>
+                  </a>
+                ))}
+              </div>
             ) : null}
             {remoteImages > 0 ? (
               <p className="hint">

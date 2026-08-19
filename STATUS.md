@@ -1,6 +1,6 @@
 # STATUS.md — morning briefing
 
-**Updated:** 2026-08-19 · repo pushed, private, even with `origin/main` at `8dda41d`.
+**Updated:** 2026-08-19 (MIME session) · private repo · **local commits waiting, not pushed** — say the word.
 
 For full technical state, read **`CHECKPOINT.md`** first. This file is the human-facing "what to click" version.
 
@@ -19,7 +19,14 @@ Header inspect (SPF/DKIM/From-vs-Return-Path) auto-opens on suspect mail. Spoken
 (star/archive/keep-unread/file). Sibyl memory (`remember that…`). Two-click Confirm send. Themes
 (Filament/Retro/Modern) work even if the API is down. Onboarding screen on first run with no account.
 
-Tests: **vitest 55/55**, **cargo all green**, `hermes verify` ok.
+**New this session — mail actually reads like mail.** Subjects were showing as
+`=?utf-8?b?UGVyZmVjdCBQeXRob24...?=` and bodies leaked MIME boundaries and `=E2=80=99`. Real MIME
+parsing now runs in Rust (Stalwart `mail-parser`): proper plain/HTML parts, quoted-printable and
+base64 decoded, accented and emoji subjects correct. Checked against your live inbox: **80 messages,
+0 garbled subjects, 0 MIME leaks.** Attachments now show as a strip under the header and download on
+click; inline `cid:` images are pulled from the message's own bytes (no network, no tracker risk).
+
+Tests: **vitest 71/71**, **cargo green + clippy clean**, web build ok.
 
 ## What to click
 
@@ -33,7 +40,8 @@ Tests: **vitest 55/55**, **cargo all green**, `hermes verify` ok.
 
 - No OAuth (app password only — some work/school tenants block this)
 - No Tauri `.exe` yet — still the Vite tab
-- Inline `cid:` images not downloaded (placeholder only)
+- Attachments/inline images work in tests, but **none of your 40 fetched newsletters actually had one** —
+  send yourself a mail with a PDF and an inline logo to confirm it on real mail
 - Overnight store is still `data/mail.json`, not the Rust SQLite store yet
 - Public GitHub: no
 

@@ -19,6 +19,13 @@ import { inspectHeaders, inspectSummary } from "./inspect.js";
 import { InspectBook } from "./inspect-prefs.js";
 import { readableBody, toIsoDate, countHiddenMedia } from "./mailtext.js";
 import { looksLikeHtml, remoteImageCount, sanitizeMailHtml } from "./html-mail.js";
+import {
+  attachmentStrip,
+  inlineCidImages,
+  safeFilename,
+  type LoadedPart,
+  type MailAttachment,
+} from "./attachments.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -86,6 +93,52 @@ function rememberActive(id: string): void {
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
 const pendingSends = new Map<string, { to: string; subject: string; body: string; accountId: string; expires: number }>();
+
+/**
+ * Inline image bytes, pulled on demand from the user's own IMAP server.
+ * Bounded on purpose: a mailbox of newsletters would otherwise pin megabytes of
+ * base64 in RAM for the life of the process.
+ */
+const inlineCache = new Map<string, Record<string, LoadedPart>>();
+const INLINE_CACHE_MAX = 12;
+
+async function loadInlineParts(
+  message: { id: string; accountId: string; uid?: string; folder: string },
+  parts: MailAttachment[],
+): Promise<Record<string, LoadedPart>> {
+  const cached = inlineCache.get(message.id);
+  if (cached) return cached;
+  const account = accounts.get(message.accountId);
+  if (!account || !message.uid) return {};
+  const wanted = parts.filter(
+    (p) => p.inline && p.contentId && p.mimeType.toLowerCase().startsWith("image/"),
+  );
+  const out: Record<string, LoadedPart> = {};
+  for (const part of wanted.slice(0, 8)) {
+    const result = await runMailCli(
+      buildMailCliArgs({
+        action: "part",
+        secretRef: account.secret_ref,
+        host: account.imap_host,
+        port: account.imap_port,
+        tls: account.imap_tls,
+        username: account.username,
+        folder: message.folder || "INBOX",
+        uid: message.uid,
+        part: part.part,
+      }),
+    );
+    if (result.ok && result.part && part.contentId) {
+      out[part.contentId] = { mimeType: result.part.mime_type, data: result.part.data };
+    }
+  }
+  if (inlineCache.size >= INLINE_CACHE_MAX) {
+    const oldest = inlineCache.keys().next().value;
+    if (oldest) inlineCache.delete(oldest);
+  }
+  inlineCache.set(message.id, out);
+  return out;
+}
 
 function runWorkflows(accountId: string): Array<{ id: string; apply: string[] }> {
   const rules = workflows.list();
@@ -265,15 +318,75 @@ const server = http.createServer(async (req, res) => {
         inspect && ((prefs.autoInspect && inspect.label !== "ok") || prefs.alwaysShow),
       );
       const allowImages = url.searchParams.get("images") === "1";
-      const html = message.html ? sanitizeMailHtml(message.html, { allowRemoteImages: allowImages }) : null;
+      // Inline cid: parts are resolved from the message's own MIME bytes BEFORE
+      // sanitizing, because the sanitizer replaces any leftover cid: with a
+      // placeholder. Nothing here touches the network.
+      const parts = message.attachments ?? [];
+      const wantsInline = parts.some((p) => p.inline && p.contentId);
+      let rawHtml = message.html ?? null;
+      if (rawHtml && wantsInline && message.uid) {
+        const loaded = await loadInlineParts(message, parts).catch(() => ({}));
+        rawHtml = inlineCidImages(rawHtml, parts, loaded);
+      }
+      const html = rawHtml ? sanitizeMailHtml(rawHtml, { allowRemoteImages: allowImages }) : null;
       const remoteImages = message.html ? remoteImageCount(message.html) : 0;
       const { html: _raw, ...safeMessage } = message;
       return json(
         res,
         200,
-        { message: safeMessage, html, remoteImages, imagesOn: allowImages, draft: drafts.get(id) ?? null, threat, inspect, autoOpen },
+        {
+          message: safeMessage,
+          html,
+          remoteImages,
+          imagesOn: allowImages,
+          attachments: attachmentStrip(parts),
+          draft: drafts.get(id) ?? null,
+          threat,
+          inspect,
+          autoOpen,
+        },
         origin,
       );
+    }
+
+    // Download one attachment. Bytes come straight from the user's IMAP server
+    // via aether-cli; the API never stores them on disk.
+    if (req.method === "GET" && /^\/api\/messages\/.+\/parts\/\d+$/.test(url.pathname)) {
+      const [, rawId, rawPart] = url.pathname.match(/^\/api\/messages\/(.+)\/parts\/(\d+)$/) ?? [];
+      const message = store.getMessage(decodeURIComponent(rawId ?? ""));
+      if (!message) return notFound(res);
+      const account = accounts.get(message.accountId);
+      const meta = (message.attachments ?? []).find((a) => a.part === Number(rawPart));
+      if (!account || !meta || !message.uid) {
+        return json(res, 404, { error: "no_such_part" }, origin);
+      }
+      const result = await runMailCli(
+        buildMailCliArgs({
+          action: "part",
+          secretRef: account.secret_ref,
+          host: account.imap_host,
+          port: account.imap_port,
+          tls: account.imap_tls,
+          username: account.username,
+          folder: message.folder || "INBOX",
+          uid: message.uid,
+          part: meta.part,
+        }),
+      );
+      if (!result.ok || !result.part) {
+        return json(res, 502, { error: "part_failed", message: result.error }, origin);
+      }
+      const bytes = Buffer.from(result.part.data, "base64");
+      // attachment; disposition + a sanitized name: never let mail name a path.
+      res.writeHead(200, {
+        "content-type": "application/octet-stream",
+        "content-length": String(bytes.length),
+        "content-disposition": `attachment; filename="${safeFilename(meta.filename).replace(/"/g, "")}"`,
+        "x-content-type-options": "nosniff",
+        ...(origin ? { "access-control-allow-origin": origin } : {}),
+      });
+      res.end(bytes);
+      return;
     }
 
     if (req.method === "GET" && url.pathname === "/api/search") {
@@ -603,10 +716,29 @@ const server = http.createServer(async (req, res) => {
           subject: m.subject,
           date: toIsoDate(m.date || ""),
           unread: m.unread,
+          // aether-cli now returns a decoded text part. readableBody only has to
+          // strip markup when the sender shipped HTML with no plain alternative.
           body: readableBody(m.body || ""),
           headers: m.headers,
-          hiddenMedia: remoteImageCount(m.body || "") || countHiddenMedia(m.body || ""),
-          html: looksLikeHtml(m.body || "") ? (m.body || "").slice(0, 40_000) : undefined,
+          preview: m.preview || undefined,
+          uid: m.id,
+          attachments: (m.attachments ?? []).map((a) => ({
+            part: a.part,
+            filename: a.filename,
+            mimeType: a.mime_type,
+            size: a.size,
+            contentId: a.content_id ?? null,
+            inline: a.inline,
+          })),
+          hiddenMedia:
+            remoteImageCount(m.html || m.body || "") || countHiddenMedia(m.html || m.body || ""),
+          // Prefer the real text/html MIME part; fall back to sniffing only for
+          // senders that shipped HTML inside what they labelled as text.
+          html: m.html
+            ? m.html.slice(0, 200_000)
+            : looksLikeHtml(m.body || "")
+              ? (m.body || "").slice(0, 40_000)
+              : undefined,
         })),
       );
       store.save();

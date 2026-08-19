@@ -1507,3 +1507,56 @@ input[type="checkbox"] {
     transition: none !important;
   }
 }
+
+/* Attachment strip — sits under the header, above the body. Theme tokens only. */
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.attachments-label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.attachment {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 22rem;
+  padding: 5px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.attachment:hover,
+.attachment:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-soft);
+}
+
+.attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-size {
+  color: var(--muted);
+  font-size: 12px;
+  flex: 0 0 auto;
+}

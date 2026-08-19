@@ -30,7 +30,11 @@ pub fn require_transport(endpoint: &ImapEndpoint) -> Result<(), ProbeError> {
     }
 }
 
-pub fn validate_probe(endpoint: &ImapEndpoint, username: &str, secret: &str) -> Result<(), ProbeError> {
+pub fn validate_probe(
+    endpoint: &ImapEndpoint,
+    username: &str,
+    secret: &str,
+) -> Result<(), ProbeError> {
     if endpoint.host.trim().is_empty() {
         return Err(ProbeError::MissingHost);
     }

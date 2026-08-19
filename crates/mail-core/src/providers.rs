@@ -56,7 +56,8 @@ pub fn preset(kind: ProviderKind) -> ProviderPreset {
             smtp_tls: "starttls",
             auth_method: "app-password",
             unsupported: false,
-            notes: "Many work tenants require OAuth2. App password works on some consumer accounts.",
+            notes:
+                "Many work tenants require OAuth2. App password works on some consumer accounts.",
         },
         ProviderKind::Icloud => ProviderPreset {
             kind,

@@ -209,7 +209,9 @@ impl MailStore {
             })
         })?;
         let mut folders = rows.collect::<rusqlite::Result<Vec<FolderSummary>>>()?;
-        let mut extra = self.conn.prepare("SELECT name FROM extra_folders WHERE account_id = ?1")?;
+        let mut extra = self
+            .conn
+            .prepare("SELECT name FROM extra_folders WHERE account_id = ?1")?;
         let extras = extra.query_map(params![account_id], |row| row.get::<_, String>(0))?;
         for name in extras {
             let name = name?;
@@ -393,11 +395,7 @@ fn map_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
     let date = DateTime::parse_from_rfc3339(&date_raw)
         .map(|d| d.with_timezone(&Utc))
         .map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                6,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            )
+            rusqlite::Error::FromSqlConversionFailure(6, rusqlite::types::Type::Text, Box::new(e))
         })?;
     Ok(StoredMessage {
         id: row.get(0)?,

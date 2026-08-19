@@ -8,3 +8,5 @@ description = "IMAP/SMTP/MIME types and sync for Aether Mail"
 [dependencies]
 thiserror.workspace = true
 chrono.workspace = true
+mail-parser = "0.11"
+base64 = "0.22"

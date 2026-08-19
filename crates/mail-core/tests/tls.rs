@@ -7,7 +7,10 @@ fn remote_imap_must_use_tls() {
         port: 143,
         tls: "none".into(),
     };
-    assert_eq!(require_transport(&plain), Err(ProbeError::PlaintextForbidden));
+    assert_eq!(
+        require_transport(&plain),
+        Err(ProbeError::PlaintextForbidden)
+    );
 }
 
 #[test]

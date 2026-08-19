@@ -1,4 +1,4 @@
-import { compareMailDate } from "./mailtext.js";
+import { compareMailDate, decodeEncodedWords } from "./mailtext.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -16,6 +16,19 @@ export type FixtureMessage = {
   headers?: string;
   hiddenMedia?: number;
   html?: string;
+  /** MIME parts (metadata only — bytes are fetched on demand). */
+  attachments?: Array<{
+    part: number;
+    filename: string;
+    mimeType: string;
+    size: number;
+    contentId: string | null;
+    inline: boolean;
+  }>;
+  /** Short snippet for the list row, so the list never carries a whole body. */
+  preview?: string;
+  /** IMAP UID + folder, needed to pull a part later. */
+  uid?: string;
 };
 
 export type FolderSummary = {
@@ -46,7 +59,15 @@ export class MailStore {
       const raw = readFileSync(this.filePath, "utf8");
       const rows = JSON.parse(raw) as FixtureMessage[];
       this.messages.clear();
-      for (const row of rows) this.messages.set(row.id, { ...row, starred: row.starred ?? false });
+      for (const row of rows) {
+        this.messages.set(row.id, {
+          ...row,
+          subject: decodeEncodedWords(row.subject ?? ""),
+          from: decodeEncodedWords(row.from ?? ""),
+          to: decodeEncodedWords(row.to ?? ""),
+          starred: row.starred ?? false,
+        });
+      }
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code !== "ENOENT") throw err;
@@ -62,7 +83,16 @@ export class MailStore {
 
   loadFixture(rows: FixtureMessage[]): void {
     for (const row of rows) {
-      this.messages.set(row.id, { ...row, starred: row.starred ?? false });
+      // Decode RFC 2047 once, on the way in: mail stored by earlier builds still
+      // carries raw "=?utf-8?B?...?=" subjects, and every read path (list,
+      // search, open, agent prompt) must see human text, not wire encoding.
+      this.messages.set(row.id, {
+        ...row,
+        subject: decodeEncodedWords(row.subject ?? ""),
+        from: decodeEncodedWords(row.from ?? ""),
+        to: decodeEncodedWords(row.to ?? ""),
+        starred: row.starred ?? false,
+      });
     }
   }
 

@@ -1,6 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { looksLikeHtml, remoteImageCount, sanitizeMailHtml } from "./html-mail.js";
 
+describe("sanitizeMailHtml inline images", () => {
+  it("keeps a resolved inline data: image, since those bytes came from the mail itself", () => {
+    const raw = '<p>hi</p><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="logo">';
+    const out = sanitizeMailHtml(raw, { allowRemoteImages: false });
+    expect(out).toContain("data:image/gif;base64,R0lGOD");
+    expect(out).toContain("img-src");
+  });
+
+  it("refuses a data: URL that is not an image", () => {
+    const raw = '<img src="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==">';
+    const out = sanitizeMailHtml(raw, { allowRemoteImages: false });
+    expect(out).not.toContain("data:text/html");
+  });
+
+  it("still blocks remote images while inline data images are allowed", () => {
+    const raw = '<img src="https://tracker.test/pixel.gif"><img src="data:image/png;base64,AAAA">';
+    const out = sanitizeMailHtml(raw, { allowRemoteImages: false });
+    expect(out).toContain("[image blocked]");
+    expect(out).toContain("data:image/png;base64,AAAA");
+  });
+});
+
+
 const RAW = `<html><body>
 <script>alert(1)</script>
 <p>Hello <b>Priya</b></p>

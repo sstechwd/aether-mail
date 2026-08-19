@@ -1,8 +1,8 @@
 # CHECKPOINT — Aether Mail
 
 **Read this first in a new chat. It replaces re-reading the codebase.**
-**Last updated:** 2026-08-19 · HEAD `8dda41d` · branch `main` (pushed, private `sstechwd/aether-mail`).
-Green: **vitest 55/30**, **cargo all pass**, `hermes verify --json` ok. ~6,400 LOC.
+**Last updated:** 2026-08-19 (MIME session) · branch `main`, **local commits not pushed**.
+Green: **vitest 71/32**, **cargo 22 mail-core + workspace pass**, **clippy clean**, web build ok. ~7,000 LOC.
 
 ---
 
@@ -21,6 +21,7 @@ MIT core; money later = optional hosted models (Aether+), never paywalling mail.
 | Frontend | **React 19 + TS + Vite + Tailwind-ish CSS vars** | `apps/web` |
 | UI host (temporary) | **Node HTTP API** `apps/api` (port 8787) | Scaffold. Product backend is Rust. JS never speaks IMAP/SMTP. |
 | Mail I/O | **Rust `aether-cli`** (async-imap, lettre, mail-parser) | spawned by Node. Password via stdin→keyring, never argv. |
+| MIME | **`mail-parser` 0.11 in `crates/mail-core/src/mime.rs`** | Real multipart/QP/base64/RFC2047. `parse_message`, `parse_fetched`, `part_bytes`, `preview`. |
 | Store (product) | **SQLite + FTS5** (`crates/mail-store`) | Envelopes + body-on-open. Overnight UI still uses `data/mail.json`. |
 | Secrets | **OS keyring** (`crates/aether-secrets`, Windows Credential Manager) | Node has 8-slot RAM fallback only. |
 | Agent LLM | **Local Ollama (mistral)** default; BYOK OpenAI-compatible | `num_predict` 80, 45s timeout, keep_alive 30m, 8-turn×600char. |
@@ -39,7 +40,7 @@ apps/api/src/     Node UI host. index.ts is the router. 26 modules + 30 test fil
   agent.ts chat.ts sibyl.ts usage.ts workflows.ts threat.ts persona.ts
   accounts.ts account-switch.ts mailio.ts send-prepare.ts security.ts llm*.ts
 apps/web/src/     App.tsx (main 3-pane), Settings.tsx, AgentChat.tsx, Templates.tsx, themes.ts
-crates/           aether-cli (mail I/O), mail-store (SQLite), mail-core, aether-secrets
+crates/           aether-cli (mail I/O + `part` cmd), mail-store (SQLite), mail-core (+mime.rs), aether-secrets
 docs/             ARCHITECTURE, ROADMAP, SECURITY, STORAGE, INCOME, SIBYL, CONVENTIONS (binding), adr/
 data/             *.json + *.jsonl (gitignored). mail.json, accounts.json, sibyl.db, meta.json
 scripts/          start-mvp.bat (boot API+Vite), sibyl_aether.py
@@ -52,6 +53,11 @@ scripts/          start-mvp.bat (boot API+Vite), sibyl_aether.py
 · threat score · spoken workflows (star/archive/keep-unread/file — compile locally, no LLM) · two-click Confirm send (agent can't send)
 · Sibyl memory (remember/recall) · persona voice · 30-day audit · themes (Filament/Retro/Modern, offline picker) · splash · onboarding screen
 · token bar + wait dots · phone responsive panes · keyring account remove.
+
+**MIME (new):** real multipart decode — plain + HTML parts, quoted-printable/base64, RFC 2047 subjects
+(`=?utf-8?B?…?=` decoded at fetch *and* at the store boundary, so mail already on disk reads clean too)
+· attachment strip with on-demand download (`GET /api/messages/:id/parts/:n`) · inline `cid:` images resolved
+from the message's own bytes (no network) and rendered as `data:` in the sandbox.
 
 ## 5. Hard rules (violating = wrong)
 
@@ -67,10 +73,9 @@ scripts/          start-mvp.bat (boot API+Vite), sibyl_aether.py
 ## 6. Next work (priority order)
 
 1. **Daily-driver gate**: user confirms real Gmail fetch reads clean + one real Confirm send works end-to-end.
-2. **MIME parsing** in Rust: real plain/html parts + inline `cid:` images (currently first 4k of body, cid not downloaded).
-3. **Tauri shell**: scaffold the `.exe`, drop the Node+browser tax. Move store to SQLite for real.
-4. **OAuth** (Gmail/Microsoft) — work/school tenants block app passwords.
-5. Later/ideas (NOT now): Obsidian export, terminal nano-client, template marketplace, Aether+ billing.
+2. **Tauri shell**: scaffold the `.exe`, drop the Node+browser tax. Move store to SQLite for real.
+3. **OAuth** (Gmail/Microsoft) — work/school tenants block app passwords.
+4. Later/ideas (NOT now): Obsidian export, terminal nano-client, template marketplace, Aether+ billing.
 
 ## 7. Boot / verify
 
@@ -86,7 +91,9 @@ Ports already in use = already running; don't start a second. UI blank = Vite do
 
 ## 8. Known bugs / debt
 
-- Inline `cid:` images not downloaded (shows placeholder).
+- Inline `cid:` + attachment paths are unit-tested (mutation-verified) but **no real message in the
+  test mailbox had one** — all 40 live newsletters use remote images. Needs one real attachment to confirm.
+- Attachment bytes stream through the Node API; a >2MB inline part is refused by the CLI on purpose.
 - Rust store (SQLite) exists but overnight UI still uses `data/mail.json` — migration pending.
 - No OAuth. No Tauri. Node RAM secret fallback if CLI unbuilt.
 - `imap-proto 0.10.2` future-incompat warning (upstream, harmless).

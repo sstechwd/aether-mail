@@ -2,6 +2,8 @@
 //! Never print the secret. Never accept the secret as an argv flag.
 
 use aether_secrets::{OsSecrets, SecretStore};
+use base64::Engine;
+use mail_core::mime::{parse_fetched, part_bytes, preview, Attachment};
 use mail_core::probe::{validate_probe, ImapEndpoint};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -9,6 +11,12 @@ use std::io::{self, Read, Write};
 use std::process::ExitCode;
 
 const SERVICE: &str = "aether-mail";
+/// Envelope preview shown in the list. Bodies load on open, so this stays small.
+const PREVIEW_CHARS: usize = 400;
+/// Cap on a single decoded body handed to the UI.
+const BODY_CHARS: usize = 200_000;
+/// Refuse to inline an image larger than this (bytes) — keeps the webview lean.
+const MAX_INLINE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Serialize)]
 struct JsonOut {
@@ -19,6 +27,8 @@ struct JsonOut {
     folders: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     messages: Option<Vec<Fetched>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    part: Option<PartOut>,
 }
 
 #[derive(Serialize)]
@@ -32,6 +42,44 @@ struct Fetched {
     unread: bool,
     body: String,
     headers: String,
+    /// Decoded text/html part, when the message actually has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    html: Option<String>,
+    /// Short snippet for the list row.
+    preview: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    attachments: Vec<AttachmentOut>,
+}
+
+#[derive(Serialize)]
+struct AttachmentOut {
+    part: usize,
+    filename: String,
+    mime_type: String,
+    size: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content_id: Option<String>,
+    inline: bool,
+}
+
+#[derive(Serialize)]
+struct PartOut {
+    mime_type: String,
+    /// base64 of the decoded bytes — safe to embed as a data: URL.
+    data: String,
+}
+
+impl From<&Attachment> for AttachmentOut {
+    fn from(a: &Attachment) -> Self {
+        Self {
+            part: a.part,
+            filename: a.filename.clone(),
+            mime_type: a.mime_type.clone(),
+            size: a.size,
+            content_id: a.content_id.clone(),
+            inline: a.inline,
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -46,6 +94,7 @@ fn main() -> ExitCode {
                     error: Some(sanitize(&e)),
                     folders: None,
                     messages: None,
+                    part: None,
                 })
                 .unwrap_or_else(|_| "{\"ok\":false,\"error\":\"cli\"}".into())
             );
@@ -55,6 +104,12 @@ fn main() -> ExitCode {
 }
 
 fn sanitize(err: &str) -> String {
+    // Our own static usage text is known-safe and never contains a credential.
+    // Everything else is treated as untrusted: if it mentions credentials at all,
+    // we drop it rather than risk echoing a password into a log.
+    if err.starts_with("usage: aether-cli") {
+        return err.to_string();
+    }
     let lower = err.to_ascii_lowercase();
     if lower.contains("password") || lower.contains("secret") || lower.contains("credential") {
         "mail command failed (details omitted so a secret is not printed)".into()
@@ -72,8 +127,9 @@ fn run() -> Result<(), String> {
         "secret-delete" => secret_delete(&flags),
         "probe" => probe(&flags),
         "fetch" => fetch_mail(&flags),
+        "part" => fetch_part(&flags),
         "send" => send_mail(&flags),
-        _ => Err("usage: aether-cli secret-put|secret-delete|probe|fetch|send --secret-ref <id> ...".into()),
+        _ => Err("usage: aether-cli secret-put|secret-delete|probe|fetch|part|send [flags]".into()),
     }
 }
 
@@ -105,9 +161,7 @@ fn secret_put(flags: &HashMap<String, String>) -> Result<(), String> {
     if secret.is_empty() {
         return Err("need password on stdin".into());
     }
-    secrets()
-        .put(refer, secret)
-        .map_err(|e| e.to_string())?;
+    secrets().put(refer, secret).map_err(|e| e.to_string())?;
     println!(
         "{}",
         serde_json::to_string(&JsonOut {
@@ -115,6 +169,7 @@ fn secret_put(flags: &HashMap<String, String>) -> Result<(), String> {
             error: None,
             folders: None,
             messages: None,
+            part: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -131,6 +186,7 @@ fn secret_delete(flags: &HashMap<String, String>) -> Result<(), String> {
             error: None,
             folders: None,
             messages: None,
+            part: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -161,9 +217,7 @@ fn probe(flags: &HashMap<String, String>) -> Result<(), String> {
     };
     validate_probe(&ep, &user, &secret).map_err(|e| e.to_string())?;
     let mut session = imap_login(&host, port, &tls, &user, &secret)?;
-    let list = session
-        .list(None, Some("*"))
-        .map_err(|e| e.to_string())?;
+    let list = session.list(None, Some("*")).map_err(|e| e.to_string())?;
     let folders: Vec<String> = list.iter().map(|n| n.name().to_string()).collect();
     let _ = session.logout();
     println!(
@@ -173,6 +227,7 @@ fn probe(flags: &HashMap<String, String>) -> Result<(), String> {
             error: None,
             folders: Some(folders),
             messages: None,
+            part: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -211,6 +266,7 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
                     error: None,
                     folders: None,
                     messages: Some(Vec::new()),
+                    part: None,
                 })
                 .map_err(|e| e.to_string())?
             );
@@ -222,7 +278,9 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
     let fetches = session
         .fetch(
             &seq,
-            "(UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE RETURN-PATH REPLY-TO RECEIVED AUTHENTICATION-RESULTS MESSAGE-ID)] BODY.PEEK[TEXT]<0.4000>)",
+            // Full header + body text: a multipart body cannot be decoded without
+            // the Content-Type boundary, and truncating mid-part corrupts base64.
+            "(UID FLAGS BODY.PEEK[HEADER] BODY.PEEK[TEXT]<0.262144>)",
         )
         .map_err(|e| e.to_string())?;
     let mut messages = Vec::new();
@@ -235,16 +293,32 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
             .flags()
             .iter()
             .all(|f| format!("{f:?}") != "Seen" && format!("{f:?}") != "\\Seen");
+        let parsed = parse_fetched(header, text);
+        // Prefer decoded MIME; fall back to raw only if the message had no text part.
+        let body: String = if parsed.text.trim().is_empty() {
+            String::from_utf8_lossy(text)
+                .chars()
+                .take(BODY_CHARS)
+                .collect()
+        } else {
+            parsed.text.chars().take(BODY_CHARS).collect()
+        };
         messages.push(Fetched {
             id: format!("imap-{uid}"),
             folder: folder.clone(),
-            from: header_field(&header_txt, "From"),
-            to: header_field(&header_txt, "To"),
-            subject: header_field(&header_txt, "Subject"),
-            date: header_field(&header_txt, "Date"),
+            // Decoded (RFC 2047) values win; raw header is the fallback.
+            from: non_empty(parsed.from.clone(), || header_field(&header_txt, "From")),
+            to: non_empty(parsed.to.clone(), || header_field(&header_txt, "To")),
+            subject: non_empty(parsed.subject.clone(), || {
+                header_field(&header_txt, "Subject")
+            }),
+            date: non_empty(parsed.date.clone(), || header_field(&header_txt, "Date")),
             unread,
-            body: String::from_utf8_lossy(text).chars().take(4000).collect(),
-            headers: header_txt.chars().take(4000).collect(),
+            preview: preview(&body, PREVIEW_CHARS),
+            html: parsed.html.map(|h| h.chars().take(BODY_CHARS).collect()),
+            attachments: parsed.attachments.iter().map(AttachmentOut::from).collect(),
+            body,
+            headers: header_txt.chars().take(8000).collect(),
         });
     }
     let _ = session.logout();
@@ -255,10 +329,87 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
             error: None,
             folders: None,
             messages: Some(messages),
+            part: None,
         })
         .map_err(|e| e.to_string())?
     );
     Ok(())
+}
+
+/// Pull one decoded part (attachment or inline image) on demand, by UID + index.
+/// Kept separate from `fetch` so the list path never carries attachment bytes.
+fn fetch_part(flags: &HashMap<String, String>) -> Result<(), String> {
+    let host = flags.get("host").cloned().unwrap_or_default();
+    let port: u16 = flags
+        .get("port")
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(993);
+    let tls = flags.get("tls").cloned().unwrap_or_else(|| "ssl".into());
+    let user = flags.get("user").cloned().unwrap_or_default();
+    let folder = flags
+        .get("folder")
+        .cloned()
+        .unwrap_or_else(|| "INBOX".into());
+    let uid = flags
+        .get("uid")
+        .and_then(|u| u.trim_start_matches("imap-").parse::<u32>().ok())
+        .ok_or("need --uid")?;
+    let index: usize = flags
+        .get("part")
+        .and_then(|p| p.parse().ok())
+        .ok_or("need --part")?;
+    let secret = load_secret(flags)?;
+    let ep = ImapEndpoint {
+        host: host.clone(),
+        port,
+        tls: tls.clone(),
+    };
+    validate_probe(&ep, &user, &secret).map_err(|e| e.to_string())?;
+    let mut session = imap_login(&host, port, &tls, &user, &secret)?;
+    session.select(&folder).map_err(|e| e.to_string())?;
+    let fetches = session
+        .uid_fetch(uid.to_string(), "(BODY.PEEK[])")
+        .map_err(|e| e.to_string())?;
+    let item = fetches.iter().next().ok_or("message not found")?;
+    let raw = item.body().or_else(|| item.text()).unwrap_or(b"");
+    let parsed = parse_fetched(b"", raw);
+    let meta = parsed
+        .attachments
+        .iter()
+        .find(|a| a.part == index)
+        .ok_or("no such part")?;
+    if meta.size > MAX_INLINE_BYTES {
+        let _ = session.logout();
+        return Err(format!(
+            "part is {} bytes, over the {MAX_INLINE_BYTES} byte inline limit",
+            meta.size
+        ));
+    }
+    let bytes = part_bytes(raw, index).ok_or("part has no decodable bytes")?;
+    let _ = session.logout();
+    println!(
+        "{}",
+        serde_json::to_string(&JsonOut {
+            ok: true,
+            error: None,
+            folders: None,
+            messages: None,
+            part: Some(PartOut {
+                mime_type: meta.mime_type.clone(),
+                data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+            }),
+        })
+        .map_err(|e| e.to_string())?
+    );
+    Ok(())
+}
+
+fn non_empty(value: String, fallback: impl FnOnce() -> String) -> String {
+    if value.trim().is_empty() {
+        fallback()
+    } else {
+        value
+    }
 }
 
 fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
@@ -283,8 +434,13 @@ fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
         .read_to_string(&mut body)
         .map_err(|e| e.to_string())?;
     let email = lettre::Message::builder()
-        .from(from.parse().map_err(|e: lettre::address::AddressError| e.to_string())?)
-        .to(to.parse().map_err(|e: lettre::address::AddressError| e.to_string())?)
+        .from(
+            from.parse()
+                .map_err(|e: lettre::address::AddressError| e.to_string())?,
+        )
+        .to(to
+            .parse()
+            .map_err(|e: lettre::address::AddressError| e.to_string())?)
         .subject(subject)
         .body(body)
         .map_err(|e| e.to_string())?;
@@ -310,6 +466,7 @@ fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
             error: None,
             folders: None,
             messages: None,
+            part: None,
         })
         .map_err(|e| e.to_string())?
     );

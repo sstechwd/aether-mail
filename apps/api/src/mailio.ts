@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type MailCliAction = "probe" | "fetch" | "send" | "secret-put" | "secret-delete";
+export type MailCliAction = "probe" | "fetch" | "part" | "send" | "secret-put" | "secret-delete";
 
 export function buildMailCliArgs(input: {
   action: MailCliAction;
@@ -18,6 +18,8 @@ export function buildMailCliArgs(input: {
   from?: string;
   to?: string;
   subject?: string;
+  uid?: string;
+  part?: number;
 }): string[] {
   const args = [input.action, "--secret-ref", input.secretRef];
   if (input.host) args.push("--host", input.host);
@@ -30,6 +32,8 @@ export function buildMailCliArgs(input: {
   if (input.from) args.push("--from", input.from);
   if (input.to) args.push("--to", input.to);
   if (input.subject) args.push("--subject", input.subject);
+  if (input.uid) args.push("--uid", input.uid);
+  if (input.part !== undefined) args.push("--part", String(input.part));
   return args;
 }
 
@@ -61,7 +65,18 @@ export type MailCliResult = {
     unread: boolean;
     body: string;
     headers?: string;
+    html?: string;
+    preview?: string;
+    attachments?: Array<{
+      part: number;
+      filename: string;
+      mime_type: string;
+      size: number;
+      content_id?: string | null;
+      inline: boolean;
+    }>;
   }>;
+  part?: { mime_type: string; data: string };
 };
 
 export function runMailCli(args: string[], stdinText?: string): Promise<MailCliResult> {
