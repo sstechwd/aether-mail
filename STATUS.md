@@ -1,6 +1,6 @@
 # STATUS.md — morning briefing
 
-**Updated:** 2026-08-19 (MIME + Tauri session) · private repo · **local commits waiting, not pushed** — say the word.
+**Updated:** 2026-08-19 (MIME + Tauri + public-release session) · repo is **PUBLIC** and pushed.
 
 For full technical state, read **`CHECKPOINT.md`** first. This file is the human-facing "what to click" version.
 
@@ -50,7 +50,8 @@ Tests: **vitest 75/75**, **cargo green + clippy clean**, installer builds.
 ## Still not a daily driver
 
 - No OAuth (app password only — some work/school tenants block this)
-- Installer is unsigned (SmartScreen warning). Needs a code-signing cert (~$100-400/yr) before public release
+- Installer is unsigned (SmartScreen warning). We ship build provenance + checksums + a portable zip instead,
+  which is what OSS projects do before they can afford a cert. Path to signing: `docs/SIGNING.md`
 - The bundled backend is 89MB because it carries Node's runtime; our code is 86KB of that. Porting it to
   Rust would cut the installer to ~8MB — that's the next big win
 - Attachments/inline images work in tests, but **none of your 40 fetched newsletters actually had one** —

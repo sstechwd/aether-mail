@@ -44,3 +44,4 @@ data/*.jsonl
 
 # Hermes local plans may be committed; caches may not
 .hermes/cache/
+.hermes/focus-app.ps1

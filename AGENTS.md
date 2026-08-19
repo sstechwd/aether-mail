@@ -18,7 +18,8 @@ with an in-process agent. Private repo, MIT-intent core.
 - Secrets live in the OS keyring via `aether-cli`. Never in JSON, argv, logs, or git.
 - HTML mail renders in a sandboxed iframe. No `innerHTML`. Remote images off until the user opts in.
 - TDD: write the failing test first.
-- Repo is **private**. Push only when the human asks.
+- Repo is **public** (MIT). Push only when the human asks. Assume every commit, message, and
+  branch name is world-readable: no mailbox contents, no personal addresses, no credentials.
 
 ## If you are a fresh session with no other context
 

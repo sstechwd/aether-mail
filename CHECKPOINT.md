@@ -1,7 +1,7 @@
 # CHECKPOINT — Aether Mail
 
 **Read this first in a new chat. It replaces re-reading the codebase.**
-**Last updated:** 2026-08-19 (MIME + Tauri session) · branch `main`, **local commits not pushed**.
+**Last updated:** 2026-08-19 (MIME + Tauri + public-release session) · branch `main`, **pushed**. Repo is now **PUBLIC**.
 Green: **vitest 75/33**, **cargo workspace pass**, **clippy clean**, **installer builds**. ~7,400 LOC.
 
 ---
@@ -41,7 +41,8 @@ apps/api/src/     Node UI host. index.ts is the router. 26 modules + 30 test fil
   accounts.ts account-switch.ts mailio.ts send-prepare.ts security.ts llm*.ts
 apps/web/src/     App.tsx (main 3-pane), Settings.tsx, AgentChat.tsx, Templates.tsx, themes.ts
 crates/           aether-cli (mail I/O + `part` cmd), mail-store (SQLite), mail-core (+mime.rs), aether-secrets
-docs/             ARCHITECTURE, ROADMAP, SECURITY, STORAGE, INCOME, SIBYL, CONVENTIONS (binding), adr/
+docs/             ARCHITECTURE, ROADMAP, SECURITY, SIGNING, STORAGE, INCOME, SIBYL, CONVENTIONS (binding), adr/
+.github/workflows ci.yml (fmt+clippy+tests+build on PR), release.yml (tag -> installer + provenance)
 data/             *.json + *.jsonl (gitignored). mail.json, accounts.json, sibyl.db, meta.json
 apps/desktop/     Tauri 2 shell: src/lib.rs (sidecar lifecycle), tauri.conf.json, icons/, sidecar/ (gitignored build output)
 scripts/          start-mvp.bat (boot API+Vite), sibyl_aether.py, build-sidecar.mjs
@@ -67,7 +68,7 @@ from the message's own bytes (no network) and rendered as `data:` in the sandbox
 - **Password**: stdin→keyring. Never in accounts.json / argv / logs / git.
 - **HTML mail**: sandboxed iframe, no innerHTML, images off until Load.
 - **Cloud LLM** needs explicit `allowCloud`. Default local.
-- **TDD**: failing test first, then code. Repo **private**, push **only when asked**.
+- **TDD**: failing test first, then code. Repo **public**, push **only when asked**. Nothing personal in commits.
 - **Gmail = app password now**, OAuth is later (Phase 3). Proton via Bridge. Tutanota unsupported.
 - Never force-add `data/*.json` / `*.jsonl`.
 
@@ -102,6 +103,6 @@ Ports already in use = already running; don't start a second. UI blank = Vite do
 - Attachment bytes stream through the Node API; a >2MB inline part is refused by the CLI on purpose.
 - Rust store (SQLite) exists but overnight UI still uses `data/mail.json` — migration pending.
 - No OAuth. Node RAM secret fallback if CLI unbuilt.
-- Installer is **unsigned** — Windows SmartScreen will warn a stranger until we have a cert.
+- Installer is **unsigned** — SmartScreen warns. Mitigated with GitHub build provenance + SHA256SUMS + portable zip; see `docs/SIGNING.md`. Buy Azure Trusted Signing first when funds allow.
 - Sidecar is 89MB (Node runtime). Our API is 86KB of it. See Next work #2.
 - `imap-proto 0.10.2` future-incompat warning (upstream, harmless).
