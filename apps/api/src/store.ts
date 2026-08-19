@@ -27,6 +27,8 @@ export type FixtureMessage = {
   }>;
   /** Short snippet for the list row, so the list never carries a whole body. */
   preview?: string;
+  /** Count of non-inline attachments, for the list's paperclip. */
+  attachmentCount?: number;
   /** IMAP UID + folder, needed to pull a part later. */
   uid?: string;
 };
@@ -41,6 +43,7 @@ export class MailStore {
   private messages = new Map<string, FixtureMessage>();
   private extraFolders = new Map<string, Set<string>>();
   private filePath: string | null = null;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   static openMemory(): MailStore {
     return new MailStore();
@@ -74,11 +77,37 @@ export class MailStore {
     }
   }
 
+  /**
+   * Persist to disk. Debounced and compact on purpose:
+   *
+   * - `JSON.stringify(rows, null, 2)` pretty-printed the whole store on every
+   *   star/read toggle. On a real mailbox that is ~2.5MB of synchronous work
+   *   inside the request, and the indentation is ~25% of the bytes for a file
+   *   no human reads.
+   * - Toggling read state used to write the file once per message.
+   *
+   * `saveNow()` remains for shutdown and tests, where a flush must be certain.
+   */
   save(): void {
     if (!this.filePath) return;
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.saveNow();
+    }, 400);
+    // Do not hold the process open just for a pending write.
+    if (typeof this.saveTimer.unref === "function") this.saveTimer.unref();
+  }
+
+  saveNow(): void {
+    if (!this.filePath) return;
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
     mkdirSync(dirname(this.filePath), { recursive: true });
     const rows = [...this.messages.values()];
-    writeFileSync(this.filePath, JSON.stringify(rows, null, 2), "utf8");
+    writeFileSync(this.filePath, JSON.stringify(rows), "utf8");
   }
 
   loadFixture(rows: FixtureMessage[]): void {
@@ -153,7 +182,32 @@ export class MailStore {
         return m.folder === folder;
       })
       .sort((a, b) => dir * compareMailDate(a.date, b.date) || dir * a.id.localeCompare(b.id))
-      .map((m) => ({ ...m, body: "", headers: undefined, html: undefined }));
+      // Return envelopes only. Spreading the whole message and blanking three
+      // fields still copies the body/html strings first; on a 108-message
+      // mailbox that was ~2.5MB of needless allocation per list request.
+      .map((m) => this.envelopeRow(m));
+  }
+
+  /**
+   * The subset the message list renders. Explicit field-by-field construction —
+   * never `...m` — so a future payload field cannot silently start shipping.
+   */
+  private envelopeRow(m: FixtureMessage): FixtureMessage {
+    return {
+      id: m.id,
+      accountId: m.accountId,
+      folder: m.folder,
+      from: m.from,
+      to: m.to,
+      subject: m.subject,
+      date: m.date,
+      unread: m.unread,
+      starred: m.starred ?? false,
+      preview: m.preview ?? (m.body ?? "").slice(0, 200),
+      hiddenMedia: m.hiddenMedia ?? 0,
+      attachmentCount: (m.attachments ?? []).filter((a) => !a.inline).length,
+      body: "",
+    };
   }
 
   getMessage(id: string): FixtureMessage | undefined {

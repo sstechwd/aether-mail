@@ -507,7 +507,7 @@ textarea:focus-visible {
   width: 100%;
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-areas: "from when" "subj subj";
+  grid-template-areas: "from when" "subj subj" "peek peek";
   gap: 1px 8px;
   padding: 6px 10px 6px 20px;
   position: relative;
@@ -1559,4 +1559,25 @@ input[type="checkbox"] {
   color: var(--muted);
   font-size: 12px;
   flex: 0 0 auto;
+}
+
+/* One-line snippet under the subject — Thunderbird-shaped preview.
+   Server sends ~200 chars; CSS clamps it so long previews cannot reflow rows. */
+.peek {
+  grid-area: peek;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.row.on .peek { color: var(--ink-soft); }
+
+/* Paperclip sits with the subject, never wraps away from it. */
+.clip {
+  font-size: 11px;
+  opacity: 0.85;
 }

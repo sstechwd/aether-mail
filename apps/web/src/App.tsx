@@ -28,6 +28,10 @@ type Message = {
   starred?: boolean;
   body: string;
   hiddenMedia?: number;
+  /** Snippet from the server — the list never receives a full body. */
+  preview?: string;
+  /** Non-inline attachments, for the paperclip in the list row. */
+  attachmentCount?: number;
 };
 type AgentResult = {
   skill: string;
@@ -767,8 +771,16 @@ export default function App() {
               {m.starred ? "★ " : ""}
               {m.from.replace(/<[^>]+>/, "").trim()}
             </span>
-            <span className="subj">{m.subject}</span>
+            <span className="subj">
+              {m.attachmentCount ? (
+                <span className="clip" title={`${m.attachmentCount} attachment(s)`} aria-label="has attachments">
+                  📎{" "}
+                </span>
+              ) : null}
+              {m.subject}
+            </span>
             <span className="when">{formatWhen(m.date)}</span>
+            {m.preview ? <span className="peek">{m.preview}</span> : null}
           </button>
         ))}
         {visible.length === 0 ? <p className="empty">{unreadOnly ? "No unread in this folder." : "No messages."}</p> : null}

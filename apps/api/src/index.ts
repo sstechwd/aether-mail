@@ -898,3 +898,32 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, "127.0.0.1", () => {
   process.stdout.write(`aether-api listening on http://127.0.0.1:${PORT}\n`);
 });
+
+// Writes are debounced, so a pending read/star change must be flushed before we
+// exit or the user loses it. Tauri kills this sidecar when the window closes,
+// which arrives as SIGTERM.
+let flushed = false;
+function flushAndExit(code: number): void {
+  if (!flushed) {
+    flushed = true;
+    try {
+      store.saveNow();
+    } catch {
+      // Never block shutdown on a failed write.
+    }
+  }
+  process.exit(code);
+}
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"] as const) {
+  process.on(sig, () => flushAndExit(0));
+}
+process.on("beforeExit", () => {
+  if (!flushed) {
+    flushed = true;
+    try {
+      store.saveNow();
+    } catch {
+      /* ignore */
+    }
+  }
+});

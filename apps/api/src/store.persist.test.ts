@@ -22,12 +22,13 @@ describe("MailStore persist", () => {
         body: "hello",
       },
     ]);
-    first.save();
+    // saveNow(): save() is debounced, so tests and shutdown force the flush.
+    first.saveNow();
 
     const second = MailStore.openFile(file);
     expect(second.getMessage("p1")?.subject).toBe("persisted");
     second.markRead("p1");
-    second.save();
+    second.saveNow();
     const third = MailStore.openFile(file);
     expect(third.getMessage("p1")?.unread).toBe(false);
   });
