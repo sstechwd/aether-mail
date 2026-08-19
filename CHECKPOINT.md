@@ -1,8 +1,8 @@
 # CHECKPOINT — Aether Mail
 
 **Read this first in a new chat. It replaces re-reading the codebase.**
-Last updated: 2026-08-19 · HEAD `8d7fc06` · branch `main` (pushed, private `sstechwd/aether-mail`).
-Green: **vitest 55 / 30 files**, **cargo all pass**, `hermes verify --json` ok. ~6,400 LOC.
+**Last updated:** 2026-08-19 · HEAD `8dda41d` · branch `main` (pushed, private `sstechwd/aether-mail`).
+Green: **vitest 55/30**, **cargo all pass**, `hermes verify --json` ok. ~6,400 LOC.
 
 ---
 

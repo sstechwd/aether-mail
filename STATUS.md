@@ -1,43 +1,40 @@
 # STATUS.md — morning briefing
 
-**Updated:** 2026-08-17 21:16 PDT  
-**Do not push.** Repo is private. Branch even with origin.
+**Updated:** 2026-08-19 · repo pushed, private, even with `origin/main` at `8dda41d`.
+
+For full technical state, read **`CHECKPOINT.md`** first. This file is the human-facing "what to click" version.
 
 ## How to start
 
-`scripts\start-mvp.bat` → http://127.0.0.1:5173/  
-Hard-refresh after restart. Mail works without Ollama.
+```
+scripts\start-mvp.bat
+```
+→ http://127.0.0.1:5173/ — hard-refresh after restart. `cargo build -p aether-cli` first if you changed Rust.
 
 ## What works
 
-3-pane client on a local Node host. Fixture inbox is usable. Real IMAP is **app-password + Fetch INBOX**, password in Windows Credential Manager, never on disk.
+3-pane client, fixture + real Gmail/IMAP accounts (isolated, switchable). Fetch pulls the newest 40 messages,
+sorted correctly, HTML rendered in a sandboxed iframe (remote images blocked until you click Load).
+Header inspect (SPF/DKIM/From-vs-Return-Path) auto-opens on suspect mail. Spoken workflows compile locally
+(star/archive/keep-unread/file). Sibyl memory (`remember that…`). Two-click Confirm send. Themes
+(Filament/Retro/Modern) work even if the API is down. Onboarding screen on first run with no account.
 
-- Star / archive / trash / unread / compose / reply / forward
-- Spam folder, **!** files there, threat banner can **Move to Spam**
-- Spoken workflows (`move newsletters to spam`, `keep invoices unread`) compile locally — no Ollama
-- Chat lists those rules without calling the model
-- Settings: Your voice (max 8 samples), Workflows + Forget, Audit (30 days, no bodies), Remove account (also drops the keyring entry)
-- Phone: narrow the window — list → tap mail → ← Inbox, **Folders** drawer
-- Last folder remembered. **?** keys. Esc closes overlays.
-
-Tests just now: **cargo 16** / **vitest 45** / web build green.
+Tests: **vitest 55/55**, **cargo all green**, `hermes verify` ok.
 
 ## What to click
 
-1. Open the phish fixture. Threat score + Move to Spam.
-2. Reply → Confirm send should name the **sender**, not you.
-3. Chat: `what are my workflows` (local, no wait). Then `keep invoices unread`.
-4. Settings → Remove an account if you saved one to try. Password should leave the machine.
-5. After a real app-password account: **Fetch INBOX** on the toolbar.
+1. Click your Gmail account in the sidebar → **Fetch INBOX**.
+2. Open a message with images → **Load images** if you trust the sender.
+3. Open something suspicious-looking → header inspect should auto-open.
+4. Chat: `what's in my inbox`, `inspect headers`, `remember that …` — all local, no Ollama wait.
+5. Reply to something → **Confirm send** twice.
 
-## Still not a daily Gmail driver
+## Still not a daily driver
 
-- No Google/Microsoft **OAuth** (app password only; many work tenants will refuse)
-- Fixture SMTP still honest-fails until a real account
-- No Tauri `.exe` — this is still the Vite tab
-- Phone is **responsive browser**, not a store app. API stays `127.0.0.1`
-- No auto-reply / auto-send. Agent never confirms send.
-- Tutanota unsupported. Proton only via Bridge.
+- No OAuth (app password only — some work/school tenants block this)
+- No Tauri `.exe` yet — still the Vite tab
+- Inline `cid:` images not downloaded (placeholder only)
+- Overnight store is still `data/mail.json`, not the Rust SQLite store yet
 - Public GitHub: no
 
-Income (honest, not a pitch): `docs/INCOME.md` — free MIT client, money later as optional Aether+.
+Money (honest, not a pitch): `docs/INCOME.md` — free MIT client, optional Aether+ later.

@@ -126,4 +126,6 @@ Email is credentials + a lifetime of personal data. Treat it that way.
 
 ## Current phase
 
-**Phase 0 — planning.** Deliverable is this documentation set and a git repo. Next human decision: accept the stack and name, then Phase 1 scaffolds Tauri.
+**Phase 1+ — working overnight build.** Node API + React UI is a real daily-usable client (fixture + real IMAP/SMTP accounts, agent chat, workflows, header inspect, Sibyl memory). Rust crates (`mail-store`, `aether-cli`, `aether-secrets`) exist and are wired for real fetch/send/keyring. SQLite migration and Tauri scaffold are next, not done.
+
+**Current state and next work: see `CHECKPOINT.md` at repo root — read that first, it is kept current every session.**
