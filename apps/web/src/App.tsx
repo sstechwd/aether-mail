@@ -41,6 +41,21 @@ type AgentResult = {
   refused: string[];
 };
 
+/** Bytes -> what a person reads next to a filename. */
+function humanSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)} KB`;
+  const mb = kb / 1024;
+  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+}
+
+/** True when running inside the Tauri shell rather than a plain browser tab. */
+function inTauri(): boolean {
+  return typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -129,6 +144,7 @@ export default function App() {
   const [composing, setComposing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [composeTo, setComposeTo] = useState("");
+  const [attachFiles, setAttachFiles] = useState<Array<{ path: string; name: string; size: number }>>([]);
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
 
@@ -297,6 +313,77 @@ export default function App() {
     }
   }
 
+  /** Open the compose window pre-filled as a reply / reply-all / forward. */
+  async function startCompose(mode: "reply" | "all" | "forward"): Promise<void> {
+    if (!selectedId) return;
+    setError(null);
+    try {
+      const data = await api<{ compose: { to: string; cc?: string; subject: string; body: string } }>(
+        "/api/compose/reply",
+        { method: "POST", body: JSON.stringify({ messageId: selectedId, mode }) },
+      );
+      setComposeTo(data.compose.to);
+      setComposeSubject(data.compose.subject);
+      setComposeBody(data.compose.body);
+      setAttachFiles([]);
+      setComposing(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /**
+   * Delete is destructive and human-only. The agent has no path to this: it is
+   * a click handler, not a tool, and it always asks first.
+   */
+  async function deleteSelected(): Promise<void> {
+    const current = selectedRef.current;
+    if (!current) return;
+    const ok = window.confirm(`Delete "${current.subject}"?\n\nThis moves it to Trash on the server.`);
+    if (!ok) return;
+    try {
+      await moveSelected("Trash");
+      setSelectedId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function pickAttachments(): Promise<void> {
+    if (!inTauri()) {
+      setError("Attaching files needs the desktop app — a browser tab cannot read file paths.");
+      return;
+    }
+    try {
+      const invoke = (window as unknown as {
+        __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+      }).__TAURI_INTERNALS__.invoke;
+      const picked = (await invoke("plugin:dialog|open", {
+        options: { multiple: true, directory: false, title: "Attach files" },
+      })) as string[] | string | null;
+      if (!picked) return;
+      const paths = Array.isArray(picked) ? picked : [picked];
+      const added = await Promise.all(
+        paths.map(async (p) => {
+          const info = await api<{ name: string; size: number }>(
+            `/api/fileinfo?path=${encodeURIComponent(p)}`,
+          ).catch(() => null);
+          return {
+            path: p,
+            name: info?.name ?? p.split(/[\\/]/).pop() ?? "file",
+            size: info?.size ?? 0,
+          };
+        }),
+      );
+      setAttachFiles((prev) => {
+        const seen = new Set(prev.map((f) => f.path));
+        return [...prev, ...added.filter((f) => !seen.has(f.path))];
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not open the file picker.");
+    }
+  }
+
   async function saveDraft() {
     setError(null);
     try {
@@ -456,11 +543,19 @@ export default function App() {
         "/api/send",
         {
           method: "POST",
-          body: JSON.stringify({ messageId: selectedId, draft, confirmId: pendingConfirm }),
+          body: JSON.stringify({
+            messageId: selectedId,
+            draft,
+            confirmId: pendingConfirm,
+            // Paths only — the file bytes are read by the Rust CLI at send
+            // time, so a large attachment never crosses localhost as JSON.
+            attachments: attachFiles.map((f) => f.path),
+          }),
         },
       );
       if (data.sent) {
         setPendingConfirm(null);
+        setAttachFiles([]);
         setSendNote("Sent via SMTP.");
       } else if (data.confirmId) {
         setPendingConfirm(data.confirmId);
@@ -808,6 +903,14 @@ export default function App() {
               <p>
                 <b>Date</b> {formatWhen(selected.date)}
               </p>
+              <div className="msg-actions">
+                <button onClick={() => void startCompose("reply")}>↩ Reply</button>
+                <button onClick={() => void startCompose("all")}>↩↩ Reply all</button>
+                <button onClick={() => void startCompose("forward")}>↪ Forward</button>
+                <button onClick={() => void deleteSelected()} className="subtle-danger">
+                  🗑 Delete
+                </button>
+              </div>
             </div>
             {threat ? (
               <p className={`threat ${threat.label}`}>
@@ -970,7 +1073,26 @@ export default function App() {
           <input placeholder="To" value={composeTo} onChange={(e) => setComposeTo(e.target.value)} />
           <input placeholder="Subject" value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} />
           <textarea rows={8} value={composeBody} onChange={(e) => setComposeBody(e.target.value)} />
+          {attachFiles.length > 0 ? (
+            <div className="attach-list">
+              {attachFiles.map((f) => (
+                <span className="attach-chip" key={f.path} title={f.path}>
+                  📎 {f.name} <span className="attach-size">{humanSize(f.size)}</span>
+                  <button
+                    type="button"
+                    className="attach-x"
+                    aria-label={`Remove ${f.name}`}
+                    onClick={() => setAttachFiles((prev) => prev.filter((x) => x.path !== f.path))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <span className="attach-total">{humanSize(attachFiles.reduce((n, f) => n + f.size, 0))} total</span>
+            </div>
+          ) : null}
           <div className="sendrow">
+            <button onClick={() => void pickAttachments()}>📎 Attach</button>
             <button onClick={() => saveDraft()}>Save draft</button>
             <button onClick={() => setComposing(false)}>Cancel</button>
           </div>

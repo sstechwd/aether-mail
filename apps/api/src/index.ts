@@ -26,6 +26,7 @@ import {
   type LoadedPart,
   type MailAttachment,
 } from "./attachments.js";
+import { buildReply, buildForward } from "./reply.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -92,7 +93,12 @@ function rememberActive(id: string): void {
 
 type Draft = { messageId: string; text: string; updatedAt: string };
 const drafts = new Map<string, Draft>();
-const pendingSends = new Map<string, { to: string; subject: string; body: string; accountId: string; expires: number }>();
+/** Mail servers commonly reject over ~25MB; refuse before uploading. */
+const MAX_ATTACH_TOTAL = 24 * 1024 * 1024;
+/** Sanity cap on how many files one message can carry. */
+const MAX_ATTACHMENTS = 20;
+
+const pendingSends = new Map<string, { to: string; subject: string; body: string; accountId: string; expires: number; attachments?: string[] }>();
 
 /**
  * Inline image bytes, pulled on demand from the user's own IMAP server.
@@ -387,6 +393,36 @@ const server = http.createServer(async (req, res) => {
       });
       res.end(bytes);
       return;
+    }
+
+    // Size/name for a file the user picked in the native dialog. Read-only
+    // metadata; the file itself is never opened here.
+    // Reply / Reply-all / Forward scaffolding. Returns a composed draft; it
+    // never sends. Sending still requires the two-click confirm flow.
+    if (req.method === "POST" && url.pathname === "/api/compose/reply") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { messageId?: string; mode?: string };
+      const src = body.messageId ? store.getMessage(body.messageId) : undefined;
+      if (!src) return json(res, 404, { error: "unknown_message" }, origin);
+      const account = accounts.get(src.accountId);
+      const me = account?.email ?? src.to ?? "";
+      const composed =
+        body.mode === "forward"
+          ? buildForward(src)
+          : buildReply(src, { me, all: body.mode === "all" });
+      return json(res, 200, { compose: composed }, origin);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/fileinfo") {
+      const target = url.searchParams.get("path") ?? "";
+      if (!target) return json(res, 400, { error: "need_path" }, origin);
+      try {
+        const stat = fs.statSync(target);
+        if (!stat.isFile()) return json(res, 400, { error: "not_a_file" }, origin);
+        return json(res, 200, { name: path.basename(target), size: stat.size }, origin);
+      } catch {
+        return json(res, 404, { error: "unreadable" }, origin);
+      }
     }
 
     if (req.method === "GET" && url.pathname === "/api/search") {
@@ -785,6 +821,7 @@ const server = http.createServer(async (req, res) => {
         subject?: string;
         draft?: { text?: string } | string;
         accountId?: string;
+        attachments?: string[];
       };
       if (body.confirmId) {
         const pending = pendingSends.get(body.confirmId);
@@ -807,7 +844,9 @@ const server = http.createServer(async (req, res) => {
             to: pending.to,
             subject: pending.subject,
           }),
-          pending.body,
+          // JSON envelope so attachment paths never appear on argv, where any
+          // process on the machine could read them.
+          JSON.stringify({ body: pending.body, attachments: pending.attachments ?? [] }),
         );
         if (!sent.ok) {
           return json(res, 502, { error: "smtp_failed", message: sent.error }, origin);
@@ -827,6 +866,37 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { error: "need_to_and_body", message: e instanceof Error ? e.message : String(e) }, origin);
       }
       const confirmId = `send-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      // Attachments are local file paths chosen by the human in the compose
+      // window. Validate every one now, so a bad path fails at compose time
+      // rather than after the user clicks Confirm.
+      const attachPaths: string[] = [];
+      let attachBytes = 0;
+      for (const raw of (body.attachments ?? []).slice(0, MAX_ATTACHMENTS)) {
+        if (typeof raw !== "string" || !raw.trim()) continue;
+        let stat;
+        try {
+          stat = fs.statSync(raw);
+        } catch {
+          return json(res, 400, {
+            error: "attachment_missing",
+            message: `Cannot read ${path.basename(raw)}. Was it moved or deleted?`,
+          }, origin);
+        }
+        if (!stat.isFile()) {
+          return json(res, 400, {
+            error: "attachment_not_a_file",
+            message: `${path.basename(raw)} is not a file.`,
+          }, origin);
+        }
+        attachBytes += stat.size;
+        if (attachBytes > MAX_ATTACH_TOTAL) {
+          return json(res, 413, {
+            error: "attachments_too_large",
+            message: `Attachments total more than ${Math.round(MAX_ATTACH_TOTAL / (1024 * 1024))} MB. Most mail servers reject that — share a link instead.`,
+          }, origin);
+        }
+        attachPaths.push(raw);
+      }
       const accountId = body.accountId || accounts.list()[0]?.id;
       if (!accountId) {
         return json(res, 409, {
@@ -841,6 +911,7 @@ const server = http.createServer(async (req, res) => {
         body: prepared.body,
         accountId,
         expires: Date.now() + 5 * 60 * 1000,
+        attachments: attachPaths,
       });
       audit.append({ actor: "user", action: "send.prepare", detail: `to=${prepared.to}` });
       return json(res, 202, {

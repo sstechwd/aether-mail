@@ -4,6 +4,7 @@
 use aether_secrets::{OsSecrets, SecretStore};
 use base64::Engine;
 use mail_core::mime::{parse_fetched, part_bytes, preview, Attachment};
+use mail_core::outgoing::{build_outgoing, guess_mime, Outgoing, OutgoingAttachment};
 use mail_core::probe::{validate_probe, ImapEndpoint};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -17,6 +18,9 @@ const PREVIEW_CHARS: usize = 400;
 const BODY_CHARS: usize = 200_000;
 /// Refuse to inline an image larger than this (bytes) — keeps the webview lean.
 const MAX_INLINE_BYTES: usize = 2 * 1024 * 1024;
+/// Most providers reject mail over ~25MB; refuse locally with a clear message
+/// rather than letting SMTP fail after the upload.
+const MAX_ATTACH_TOTAL: usize = 24 * 1024 * 1024;
 
 #[derive(Serialize)]
 struct JsonOut {
@@ -404,6 +408,46 @@ fn fetch_part(flags: &HashMap<String, String>) -> Result<(), String> {
     Ok(())
 }
 
+/// `Name <a@b.c>` -> `a@b.c`. lettre's envelope wants a bare address.
+fn extract_addr(value: &str) -> String {
+    if let Some(start) = value.rfind('<') {
+        if let Some(end) = value[start..].find('>') {
+            return value[start + 1..start + end].trim().to_string();
+        }
+    }
+    value.trim().to_string()
+}
+
+/// stdin is either a raw body (older callers) or `{"body": "...",
+/// "attachments": ["C:/path/file.pdf"]}`. Returns (body, paths).
+fn parse_send_stdin(raw: &str) -> (String, Vec<String>) {
+    let trimmed = raw.trim_start();
+    if !trimmed.starts_with('{') {
+        return (raw.to_string(), Vec::new());
+    }
+    match serde_json::from_str::<serde_json::Value>(trimmed) {
+        Ok(v) => {
+            let body = v
+                .get("body")
+                .and_then(|b| b.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let paths = v
+                .get("attachments")
+                .and_then(|a| a.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|p| p.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            (body, paths)
+        }
+        // Body that merely happens to start with '{' is still a body.
+        Err(_) => (raw.to_string(), Vec::new()),
+    }
+}
+
 fn non_empty(value: String, fallback: impl FnOnce() -> String) -> String {
     if value.trim().is_empty() {
         fallback()
@@ -433,17 +477,43 @@ fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
     io::stdin()
         .read_to_string(&mut body)
         .map_err(|e| e.to_string())?;
-    let email = lettre::Message::builder()
-        .from(
-            from.parse()
-                .map_err(|e: lettre::address::AddressError| e.to_string())?,
-        )
-        .to(to
-            .parse()
-            .map_err(|e: lettre::address::AddressError| e.to_string())?)
-        .subject(subject)
-        .body(body)
-        .map_err(|e| e.to_string())?;
+
+    // stdin is either a plain body (back-compat) or a JSON envelope carrying
+    // the body plus attachment paths. Paths never go on argv: the command line
+    // is visible to every process on the machine.
+    let (body_text, attachment_paths) = parse_send_stdin(&body);
+
+    let mut attachments = Vec::new();
+    let mut total: usize = 0;
+    for path in &attachment_paths {
+        let bytes = std::fs::read(path).map_err(|e| format!("cannot read attachment: {e}"))?;
+        total += bytes.len();
+        if total > MAX_ATTACH_TOTAL {
+            return Err(format!(
+                "attachments exceed the {} MB limit most mail servers accept",
+                MAX_ATTACH_TOTAL / (1024 * 1024)
+            ));
+        }
+        let filename = std::path::Path::new(path)
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_else(|| "attachment".to_string());
+        let mime_type = guess_mime(&filename).to_string();
+        attachments.push(OutgoingAttachment {
+            filename,
+            mime_type,
+            bytes,
+        });
+    }
+
+    let raw = build_outgoing(&Outgoing {
+        from: from.clone(),
+        to: to.clone(),
+        subject: subject.clone(),
+        body: body_text,
+        attachments,
+    })?;
+
     let creds = lettre::transport::smtp::authentication::Credentials::new(user, secret);
     let mailer = if smtp_port == 465 {
         lettre::SmtpTransport::relay(&smtp_host)
@@ -458,7 +528,20 @@ fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
             .credentials(creds)
             .build()
     };
-    lettre::Transport::send(&mailer, &email).map_err(|e| e.to_string())?;
+    // Send the raw RFC 5322 bytes we built, so multipart/attachments survive
+    // exactly as composed. Envelope addresses are parsed separately.
+    let envelope = lettre::address::Envelope::new(
+        Some(
+            extract_addr(&from)
+                .parse()
+                .map_err(|e: lettre::address::AddressError| e.to_string())?,
+        ),
+        vec![extract_addr(&to)
+            .parse()
+            .map_err(|e: lettre::address::AddressError| e.to_string())?],
+    )
+    .map_err(|e| e.to_string())?;
+    lettre::Transport::send_raw(&mailer, &envelope, &raw).map_err(|e| e.to_string())?;
     println!(
         "{}",
         serde_json::to_string(&JsonOut {

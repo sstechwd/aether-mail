@@ -2,13 +2,21 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Minimum surface Aether Mail needs. No fs, no arbitrary shell.",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     {
       "identifier": "shell:allow-spawn",
-      "allow": [{ "name": "aether-api", "sidecar": true }]
-    }
+      "allow": [
+        {
+          "name": "aether-api",
+          "sidecar": true
+        }
+      ]
+    },
+    "dialog:allow-open"
   ]
 }

@@ -1,6 +1,7 @@
 //! Protocol types and a MailSource trait. IMAP/SMTP adapters come next.
 
 pub mod mime;
+pub mod outgoing;
 pub mod probe;
 pub mod providers;
 

@@ -1,0 +1,130 @@
+//! Building outgoing mail with attachments.
+//!
+//! Sending a file is table stakes — the compose window had no way to do it.
+//! The message must be real multipart/mixed so any mail client can read it,
+//! and the filename must never let a sender write outside their own message.
+
+use mail_core::outgoing::{build_outgoing, guess_mime, Outgoing, OutgoingAttachment};
+
+fn attachment(name: &str, mime: &str, bytes: &[u8]) -> OutgoingAttachment {
+    OutgoingAttachment {
+        filename: name.to_string(),
+        mime_type: mime.to_string(),
+        bytes: bytes.to_vec(),
+    }
+}
+
+#[test]
+fn plain_message_without_attachments_stays_simple() {
+    let mail = build_outgoing(&Outgoing {
+        from: "me@example.com".into(),
+        to: "you@example.com".into(),
+        subject: "hello".into(),
+        body: "just text".into(),
+        attachments: vec![],
+    })
+    .expect("build failed");
+
+    let raw = String::from_utf8_lossy(&mail);
+    assert!(raw.contains("Subject: hello"), "subject missing");
+    assert!(raw.contains("just text"), "body missing");
+    // No attachments: do not pay for a multipart envelope.
+    assert!(
+        !raw.contains("multipart/mixed"),
+        "plain mail should not be multipart"
+    );
+}
+
+#[test]
+fn message_with_one_attachment_is_multipart_and_carries_the_file() {
+    let mail = build_outgoing(&Outgoing {
+        from: "me@example.com".into(),
+        to: "you@example.com".into(),
+        subject: "here is the report".into(),
+        body: "see attached".into(),
+        attachments: vec![attachment("q3.pdf", "application/pdf", b"%PDF-1.4 fake")],
+    })
+    .expect("build failed");
+
+    let raw = String::from_utf8_lossy(&mail);
+    assert!(raw.contains("multipart/mixed"), "not multipart: {raw:.200}");
+    assert!(raw.contains("see attached"), "body lost");
+    assert!(raw.contains("application/pdf"), "attachment type lost");
+    assert!(raw.contains("q3.pdf"), "filename lost");
+    assert!(
+        raw.contains("Content-Disposition: attachment"),
+        "disposition missing"
+    );
+    // Binary must be base64 encoded, not raw on the wire.
+    assert!(
+        raw.contains("base64"),
+        "attachment not base64 encoded: {raw:.400}"
+    );
+}
+
+#[test]
+fn multiple_attachments_all_survive() {
+    let mail = build_outgoing(&Outgoing {
+        from: "me@example.com".into(),
+        to: "you@example.com".into(),
+        subject: "two files".into(),
+        body: "both attached".into(),
+        attachments: vec![
+            attachment("a.txt", "text/plain", b"alpha"),
+            attachment("b.png", "image/png", b"\x89PNG\r\n\x1a\n"),
+        ],
+    })
+    .expect("build failed");
+
+    let raw = String::from_utf8_lossy(&mail);
+    assert!(raw.contains("a.txt"), "first attachment lost");
+    assert!(raw.contains("b.png"), "second attachment lost");
+    assert!(raw.contains("image/png"), "png type lost");
+}
+
+#[test]
+fn attachment_filename_cannot_carry_a_path() {
+    // A crafted filename must not escape into a directory traversal when a
+    // receiving client saves it.
+    let mail = build_outgoing(&Outgoing {
+        from: "me@example.com".into(),
+        to: "you@example.com".into(),
+        subject: "nasty".into(),
+        body: "x".into(),
+        attachments: vec![attachment("../../etc/passwd", "text/plain", b"root:x:0:0")],
+    })
+    .expect("build failed");
+
+    let raw = String::from_utf8_lossy(&mail);
+    assert!(
+        !raw.contains("../"),
+        "path separators survived into the message: {raw:.400}"
+    );
+    assert!(raw.contains("passwd"), "basename should survive");
+}
+
+#[test]
+fn rejects_a_message_with_no_recipient() {
+    let err = build_outgoing(&Outgoing {
+        from: "me@example.com".into(),
+        to: "   ".into(),
+        subject: "x".into(),
+        body: "x".into(),
+        attachments: vec![],
+    });
+    assert!(err.is_err(), "empty recipient must be refused");
+}
+
+#[test]
+fn guesses_common_mime_types_from_the_extension() {
+    assert_eq!(guess_mime("report.pdf"), "application/pdf");
+    assert_eq!(guess_mime("photo.PNG"), "image/png");
+    assert_eq!(guess_mime("notes.txt"), "text/plain");
+    assert_eq!(
+        guess_mime("sheet.xlsx"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    // Unknown extensions fall back to a safe generic type.
+    assert_eq!(guess_mime("mystery.zzz"), "application/octet-stream");
+    assert_eq!(guess_mime("noextension"), "application/octet-stream");
+}

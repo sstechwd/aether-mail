@@ -1581,3 +1581,77 @@ input[type="checkbox"] {
   font-size: 11px;
   opacity: 0.85;
 }
+
+/* Attachment chips in the compose window. */
+.attach-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 4px;
+}
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 18rem;
+  padding: 3px 6px 3px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attach-size { color: var(--muted); }
+
+.attach-x {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.attach-x:hover { color: var(--accent); }
+
+.attach-total {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Reply / Forward / Delete row on an open message. */
+.msg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.msg-actions button {
+  padding: 5px 11px;
+  font-size: 13px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.msg-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent-soft);
+}
+
+.msg-actions .subtle-danger { margin-left: auto; }
+
+.msg-actions .subtle-danger:hover {
+  border-color: var(--bad, #c4564a);
+  color: var(--bad, #d98b80);
+}
