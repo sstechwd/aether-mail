@@ -19,6 +19,7 @@ import {
   type PaneWidths,
   type PaneKey,
 } from "./panes.js";
+import { toggleSelection, rangeSelection, UndoStack } from "./selection.js";
 import Settings from "./Settings";
 import AgentChat from "./AgentChat";
 import Templates from "./Templates";
@@ -295,6 +296,14 @@ export default function App() {
   /** Message id being dragged onto a folder, and the folder under the cursor. */
   const [dragMsg, setDragMsg] = useState<string | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
+  /** Multi-selected message ids, and the anchor row for shift-click ranges. */
+  const [picked, setPicked] = useState<string[]>([]);
+  const [anchorId, setAnchorId] = useState<string | null>(null);
+  /** Right-click menu position and target. */
+  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  /** One-deep undo for the last destructive action. */
+  const undoRef = useRef(new UndoStack());
+  const [undoLabel, setUndoLabel] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -874,6 +883,87 @@ export default function App() {
       body: JSON.stringify({ starred: !current.starred }),
     });
     if (data.message) await applyMessage(data.message);
+  }
+
+  /**
+   * Act on the current selection (or one message), with undo.
+   *
+   * Every destructive action records how to reverse itself before it runs, so
+   * "Moved 40 to Trash" is always one click from being taken back. Undo is
+   * one-deep and expires — see selection.ts for why.
+   */
+  async function bulkAction(
+    ids: string[],
+    action: "move" | "read" | "unread" | "star" | "unstar",
+    dest?: string,
+  ): Promise<void> {
+    if (ids.length === 0) return;
+    // Remember where each message was, so a move can be reversed exactly.
+    const origins = new Map<string, string>();
+    for (const id of ids) {
+      const m = messages.find((x) => x.id === id);
+      if (m) origins.set(id, m.folder ?? folder);
+    }
+
+    try {
+      const data = await api<{ done: string[]; folders: Folder[] }>("/api/messages/bulk", {
+        method: "POST",
+        body: JSON.stringify({ ids, action, folder: dest }),
+      });
+      setFolders(data.folders);
+
+      if (action === "move") {
+        setMessages((ms) => ms.filter((m) => !ids.includes(m.id)));
+        if (selectedId && ids.includes(selectedId)) setSelectedId(null);
+        const label = `Moved ${ids.length} to ${dest}`;
+        undoRef.current.push({
+          label,
+          undo: async () => {
+            // Put each message back where it actually came from, one call per
+            // origin folder rather than assuming they shared one.
+            const byOrigin = new Map<string, string[]>();
+            for (const [id, from] of origins) {
+              byOrigin.set(from, [...(byOrigin.get(from) ?? []), id]);
+            }
+            for (const [from, group] of byOrigin) {
+              await api("/api/messages/bulk", {
+                method: "POST",
+                body: JSON.stringify({ ids: group, action: "move", folder: from }),
+              });
+            }
+            await refreshMessages(folder);
+            await refreshFolders();
+          },
+        });
+        setUndoLabel(label);
+        window.setTimeout(() => setUndoLabel(null), 12_000);
+      } else {
+        // Flag changes are cheap to reflect locally.
+        setMessages((ms) =>
+          ms.map((m) =>
+            ids.includes(m.id)
+              ? {
+                  ...m,
+                  unread: action === "unread" ? true : action === "read" ? false : m.unread,
+                  starred: action === "star" ? true : action === "unstar" ? false : m.starred,
+                }
+              : m,
+          ),
+        );
+      }
+      setPicked([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function runUndo(): Promise<void> {
+    setUndoLabel(null);
+    try {
+      await undoRef.current.undo();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   /** Move any message by id — used by drag-and-drop onto a folder. */
@@ -1714,8 +1804,14 @@ export default function App() {
             key={m.id}
             className={`row${m.id === selectedId ? " on" : ""}${m.unread ? " unread" : ""}${
               dragMsg === m.id ? " dragging" : ""
-            }`}
+            }${picked.includes(m.id) ? " picked" : ""}`}
             draggable
+            onContextMenu={(e) => {
+              e.preventDefault();
+              // Right-clicking outside the selection targets just that row.
+              if (!picked.includes(m.id)) setPicked([m.id]);
+              setMenu({ x: e.clientX, y: e.clientY, id: m.id });
+            }}
             onDragStart={(e) => {
               setDragMsg(m.id);
               e.dataTransfer.effectAllowed = "move";
@@ -1725,7 +1821,19 @@ export default function App() {
               setDragMsg(null);
               setDropFolder(null);
             }}
-            onClick={() => {
+            onClick={(e) => {
+              // Ctrl/Cmd toggles one row; Shift extends from the anchor.
+              if (e.ctrlKey || e.metaKey) {
+                setPicked((p) => toggleSelection(p, m.id));
+                setAnchorId(m.id);
+                return;
+              }
+              if (e.shiftKey && anchorId) {
+                setPicked(rangeSelection(visible.map((v) => v.id), anchorId, m.id));
+                return;
+              }
+              setPicked([]);
+              setAnchorId(m.id);
               setSelectedId(m.id);
               setAgent(null);
               setSendNote(null);
@@ -2221,6 +2329,68 @@ export default function App() {
         </span>
         <span className="sb-agent">{busy === "fetch" ? "IMAP" : busy ? `working: ${busy}` : "idle"}</span>
       </footer>
+
+      {/* Right-click menu. Closes on any click elsewhere or Escape. */}
+      {menu ? (
+        <>
+          <div className="menu-veil" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
+          <div className="ctx-menu" style={{ left: menu.x, top: menu.y }}>
+            <span className="ctx-head">
+              {picked.length > 1 ? `${picked.length} messages` : "Message"}
+            </span>
+            <button onClick={() => { void bulkAction(picked, "read"); setMenu(null); }}>
+              Mark read
+            </button>
+            <button onClick={() => { void bulkAction(picked, "unread"); setMenu(null); }}>
+              Mark unread
+            </button>
+            <button onClick={() => { void bulkAction(picked, "star"); setMenu(null); }}>
+              ★ Flag
+            </button>
+            <button onClick={() => { void bulkAction(picked, "unstar"); setMenu(null); }}>
+              Unflag
+            </button>
+            <div className="ctx-sep" />
+            {folders
+              .filter((f) => f.name !== folder)
+              .slice(0, 6)
+              .map((f) => (
+                <button key={f.name} onClick={() => { void bulkAction(picked, "move", f.name); setMenu(null); }}>
+                  Move to {f.name}
+                </button>
+              ))}
+            <div className="ctx-sep" />
+            <button
+              className="danger"
+              onClick={() => { void bulkAction(picked, "move", "Trash"); setMenu(null); }}
+            >
+              🗑 Delete
+            </button>
+          </div>
+        </>
+      ) : null}
+
+      {/* Selection bar — appears only when more than one row is picked. */}
+      {picked.length > 1 ? (
+        <div className="selbar">
+          <strong>{picked.length} selected</strong>
+          <button onClick={() => void bulkAction(picked, "read")}>Mark read</button>
+          <button onClick={() => void bulkAction(picked, "star")}>★ Flag</button>
+          <button onClick={() => void bulkAction(picked, "move", "Archive")}>Archive</button>
+          <button className="subtle-danger" onClick={() => void bulkAction(picked, "move", "Trash")}>
+            🗑 Delete
+          </button>
+          <button onClick={() => setPicked([])}>Clear</button>
+        </div>
+      ) : null}
+
+      {/* Undo toast for the last destructive action. */}
+      {undoLabel ? (
+        <div className="undo-toast">
+          <span>{undoLabel}</span>
+          <button onClick={() => void runUndo()}>Undo</button>
+        </div>
+      ) : null}
     </div>
   );
 }

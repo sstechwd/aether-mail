@@ -2632,3 +2632,122 @@ textarea:focus-visible {
   box-shadow: inset 2px 0 0 var(--accent);
   transform: translateX(2px);
 }
+
+/* ===== Multi-select, context menu, undo ============================== */
+.row.picked {
+  background: var(--select);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.menu-veil { position: fixed; inset: 0; z-index: 60; }
+
+.ctx-menu {
+  position: fixed;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 5px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.42);
+  animation: menu-in 120ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.ctx-head {
+  padding: 5px 9px 7px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ctx-menu button {
+  padding: 7px 9px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  transition: background-color 120ms ease-out;
+}
+
+.ctx-menu button:hover { background: var(--hover); }
+.ctx-menu button.danger { color: var(--bad, #e2564d); }
+.ctx-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+
+/* Selection bar, floating above the status bar. */
+.selbar {
+  position: fixed;
+  bottom: calc(var(--status-h) + 14px);
+  left: 50%;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
+  transform: translateX(-50%);
+  animation: panel-rise 180ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.selbar strong { margin-right: 4px; font-size: 13px; }
+
+.selbar button {
+  padding: 6px 11px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  transition: border-color 140ms ease-out, color 140ms ease-out;
+}
+
+.selbar button:hover { border-color: var(--accent); color: var(--ink); }
+
+/* Undo toast. Bottom-left so it never covers the selection bar. */
+.undo-toast {
+  position: fixed;
+  bottom: calc(var(--status-h) + 14px);
+  left: 16px;
+  z-index: 56;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
+  color: var(--ink);
+  font-size: 13px;
+  animation: panel-rise 180ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.undo-toast button {
+  padding: 5px 12px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.undo-toast button:hover { background: var(--accent); }

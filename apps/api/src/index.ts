@@ -384,6 +384,52 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { message: store.getMessage(id) }, origin);
     }
 
+    /**
+     * Act on many messages at once.
+     *
+     * Multi-select without a bulk route means 40 round trips to clear 40
+     * newsletters, each re-writing the store. One call, one write.
+     *
+     * Note this is a UI convenience only: it moves and flags, and there is no
+     * bulk send. The agent still has no path to either.
+     */
+    if (req.method === "POST" && url.pathname === "/api/messages/bulk") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      const ids = asStringArray(body.ids, 500);
+      const action = asString(body.action);
+      if (ids.length === 0) return json(res, 400, { error: "no_ids" }, origin);
+      // Validate the action before touching anything. Doing it inside the loop
+      // meant an unknown action returned 200 whenever none of the ids existed.
+      if (!["move", "read", "unread", "star", "unstar"].includes(action)) {
+        return json(res, 400, { error: "unknown_action" }, origin);
+      }
+      const moveTo = action === "move" ? asString(body.folder, "", 200) : "";
+      if (action === "move" && !moveTo) return json(res, 400, { error: "no_folder" }, origin);
+
+      const done: string[] = [];
+      for (const id of ids) {
+        const msg = store.getMessage(id);
+        if (!msg) continue;
+        if (action === "move") {
+          store.move(id, moveTo);
+        } else if (action === "read") {
+          store.markRead(id);
+        } else if (action === "unread") {
+          store.markUnread(id);
+        } else if (action === "star") {
+          store.setStarred(id, true);
+        } else if (action === "unstar") {
+          store.setStarred(id, false);
+        }
+        done.push(id);
+      }
+      store.saveNow();
+      audit.append({ actor: "user", action: `bulk.${action}`, detail: `${done.length} message(s)` });
+      return json(res, 200, { done, folders: store.listFolders(activeAccountId) }, origin);
+    }
+
     if (req.method === "POST" && url.pathname.endsWith("/move") && url.pathname.startsWith("/api/messages/")) {
       const id = decodeURIComponent(url.pathname.slice("/api/messages/".length, -"/move".length));
       const raw = await readBody(req);
