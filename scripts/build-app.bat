@@ -31,6 +31,12 @@ taskkill /IM aether-api.exe /F >nul 2>&1
 REM Give Windows a moment to release the file handles.
 ping -n 3 127.0.0.1 >nul
 
+REM A previous installer left open by Explorer, an antivirus scan, or a running
+REM setup wizard makes makensis fail with "os error 32: being used by another
+REM process" AFTER the app itself built fine. Clear it so the bundle step has a
+REM free path to write to.
+del /q "target\release\bundle\nsis\*.exe" >nul 2>&1
+
 echo.
 echo [2/5] Building mail engine ^(aether-cli^)...
 cargo build --release -p aether-cli || goto :failed
