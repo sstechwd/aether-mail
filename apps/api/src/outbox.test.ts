@@ -95,6 +95,40 @@ describe("Outbox send lifecycle", () => {
     expect(box.due(Date.now() + 10 * 60_000)).toHaveLength(0);
   });
 
+  /**
+   * Real scenario this guards: mail scheduled for 9am, wifi down at 9am.
+   * With no backoff all three attempts burn inside 90 seconds and the message
+   * is stuck forever — which defeats the entire point of "send later".
+   */
+  it("backs off after a failure instead of retrying on the very next tick", () => {
+    const item = box.enqueue({ ...MAIL, sendAt: null });
+    const failedAt = Date.now();
+    box.markFailed(item.id, "network down");
+
+    // 30 seconds later (the worker interval) it must NOT be due yet.
+    expect(box.due(failedAt + 30_000)).toHaveLength(0);
+    // Well after the backoff window it becomes due again.
+    expect(box.due(failedAt + 10 * 60_000)).toHaveLength(1);
+  });
+
+  it("widens the backoff with each failure, so a long outage is survivable", () => {
+    const item = box.enqueue({ ...MAIL, sendAt: null });
+    const t0 = Date.now();
+    box.markFailed(item.id, "down");
+    const afterFirst = box.list()[0].nextAttemptAt ?? 0;
+    box.markFailed(item.id, "down");
+    const afterSecond = box.list()[0].nextAttemptAt ?? 0;
+    expect(afterSecond - t0).toBeGreaterThan(afterFirst - t0);
+  });
+
+  it("a manual retry clears the backoff so the user is not left waiting", () => {
+    const item = box.enqueue({ ...MAIL, sendAt: null });
+    box.markFailed(item.id, "down");
+    expect(box.due(Date.now())).toHaveLength(0);
+    box.retry(item.id);
+    expect(box.due(Date.now())).toHaveLength(1);
+  });
+
   it("a failed item is not silently dropped — the user can still see it", () => {
     const item = box.enqueue({ ...MAIL, sendAt: null });
     box.markFailed(item.id, "no network");

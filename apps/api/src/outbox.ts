@@ -29,10 +29,22 @@ export type OutboxItem = {
   attempts: number;
   error?: string;
   queuedAt: number;
+  /**
+   * Earliest epoch ms to try again after a failure.
+   *
+   * Without this, the 30s worker burns all three attempts in 90 seconds: mail
+   * scheduled for 9am with the wifi down at 9am is stuck forever, which defeats
+   * the point of "send later". Backoff spreads the retries over ~35 minutes so
+   * a normal outage is survivable.
+   */
+  nextAttemptAt?: number;
 };
 
 /** Give up after this many tries so a bad message cannot loop forever. */
 const MAX_ATTEMPTS = 3;
+
+/** 5 min, then 30 min. Long enough to outlast a typical connection drop. */
+const BACKOFF_MS = [5 * 60_000, 30 * 60_000];
 
 export class Outbox {
   private items = new Map<string, OutboxItem>();
@@ -106,7 +118,9 @@ export class Outbox {
       (i) =>
         i.status !== "sending" &&
         i.attempts < MAX_ATTEMPTS &&
-        (i.sendAt === null || i.sendAt <= now),
+        (i.sendAt === null || i.sendAt <= now) &&
+        // Respect the backoff window after a failure.
+        (i.nextAttemptAt === undefined || i.nextAttemptAt <= now),
     );
   }
 
@@ -130,11 +144,16 @@ export class Outbox {
   markFailed(id: string, reason: string): void {
     const item = this.items.get(id);
     if (!item) return;
+    const attempts = item.attempts + 1;
+    // Wait longer after each failure rather than burning every retry inside a
+    // minute and a half of the same outage.
+    const wait = BACKOFF_MS[Math.min(attempts - 1, BACKOFF_MS.length - 1)];
     this.items.set(id, {
       ...item,
       status: "failed",
-      attempts: item.attempts + 1,
+      attempts,
       error: reason.slice(0, 300),
+      nextAttemptAt: Date.now() + wait,
     });
     this.save();
   }
@@ -146,11 +165,19 @@ export class Outbox {
     return existed;
   }
 
-  /** Put a failed item back in the queue for another try. */
+  /** Put a failed item back in the queue for another try, right now. */
   retry(id: string): boolean {
     const item = this.items.get(id);
     if (!item) return false;
-    this.items.set(id, { ...item, status: "queued", attempts: 0, error: undefined });
+    this.items.set(id, {
+      ...item,
+      status: "queued",
+      attempts: 0,
+      error: undefined,
+      // A manual retry is an explicit instruction: do not make the user wait
+      // out a backoff they did not ask for.
+      nextAttemptAt: undefined,
+    });
     this.save();
     return true;
   }

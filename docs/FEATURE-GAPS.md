@@ -85,3 +85,17 @@ Calendar (.ics detection) → Rich compose → Unified inbox → Outbox → Plug
 The first three are a single short session and remove most of the "this is a
 demo" feeling. Calendar is the first genuinely new *capability* rather than a
 missing basic.
+
+
+## Known scaling limit (measured 2026-08-20)
+
+`data/mail.json` holds every synced message and is read into RAM at startup.
+Measured on a real mailbox: **246 messages = 8.0 MB** (1.2 MB plain text, 5.6 MB
+HTML). That projects to roughly **325 MB at 10,000 messages**, all resident.
+
+This is fine for the current mailbox and untenable for a heavy one. The fix is
+the SQLite migration already planned in `crates/mail-store` — bodies on disk,
+envelopes in memory, FTS5 for search. Do that before inviting anyone with a
+large archive, not after.
+
+Not a bug today. Recorded so it is a decision rather than a surprise.
