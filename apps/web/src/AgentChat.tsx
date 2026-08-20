@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { apiUrl } from "./apibase.js";
 
 type Turn = { role: string; text: string };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
@@ -64,7 +65,7 @@ export default function AgentChat(props: { messageId: string | null }) {
         <span>local Mistral · ~15–40s on CPU · cannot send</span>
         <button
           onClick={() => {
-            fetch("/api/agent/chat", { method: "DELETE" })
+            fetch(apiUrl("/api/agent/chat"), { method: "DELETE" })
               .then(() => setTurns([]))
               .catch((e: Error) => setErr(e.message));
           }}

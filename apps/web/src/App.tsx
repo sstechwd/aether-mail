@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { apiUrl } from "./apibase.js";
 import Settings from "./Settings";
 import AgentChat from "./AgentChat";
 import Templates from "./Templates";
@@ -57,7 +58,7 @@ function inTauri(): boolean {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
@@ -953,7 +954,7 @@ export default function App() {
                   <a
                     key={a.part}
                     className="attachment"
-                    href={`/api/messages/${encodeURIComponent(selectedId ?? "")}/parts/${a.part}`}
+                    href={apiUrl(`/api/messages/${encodeURIComponent(selectedId ?? "")}/parts/${a.part}`)}
                     download={a.filename}
                     title={`${a.mimeType} · ${a.human}`}
                   >

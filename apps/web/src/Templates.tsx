@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { apiUrl } from "./apibase.js";
 
 type Tpl = { id: string; name: string; subject: string; body: string };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
