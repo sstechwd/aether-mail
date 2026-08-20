@@ -9,6 +9,16 @@ import {
   dayLabel,
   type CalView,
 } from "./calgrid.js";
+import {
+  loadPanes,
+  savePanes,
+  applyPanes,
+  clampPane,
+  resetPanes,
+  PANE_LIMITS,
+  type PaneWidths,
+  type PaneKey,
+} from "./panes.js";
 import Settings from "./Settings";
 import AgentChat from "./AgentChat";
 import Templates from "./Templates";
@@ -278,6 +288,10 @@ export default function App() {
   /** Contacts page filters. People-only hides newsletters and no-reply senders. */
   const [contactQuery, setContactQuery] = useState("");
   const [contactsPeopleOnly, setContactsPeopleOnly] = useState(true);
+  /** Draggable pane widths. Persisted, so the layout survives a restart. */
+  const [panes, setPanes] = useState<PaneWidths>(() => loadPanes());
+  /** Which divider is being dragged right now, if any. */
+  const [dragging, setDragging] = useState<PaneKey | null>(null);
   const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -584,6 +598,55 @@ export default function App() {
       )}</title>${head}</head><body>${header}${bodyHtml}</body></html>`,
     );
     win.document.close();
+  }
+
+  // Push pane widths into the CSS variables the grid reads, and remember them.
+  useEffect(() => {
+    applyPanes(panes);
+    savePanes(panes);
+  }, [panes]);
+
+  /**
+   * Drag a divider.
+   *
+   * Pointer capture means the drag keeps working if the cursor leaves the thin
+   * divider, which is the difference between a resize that feels solid and one
+   * that keeps slipping. The folders divider is measured from the window edge;
+   * the list divider is measured from where the folders pane ends.
+   */
+  function startPaneDrag(key: PaneKey, e: React.PointerEvent<HTMLDivElement>): void {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    setDragging(key);
+
+    const move = (ev: PointerEvent): void => {
+      setPanes((current) => {
+        const next =
+          key === "folders"
+            ? clampPane("folders", ev.clientX)
+            : clampPane("list", ev.clientX - current.folders);
+        if (next === current[key]) return current;
+        return { ...current, [key]: next };
+      });
+    };
+
+    const stop = (): void => {
+      handle.releasePointerCapture(e.pointerId);
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+      handle.removeEventListener("pointercancel", stop);
+      setDragging(null);
+    };
+
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
+  }
+
+  /** Keyboard resizing, so a divider is not mouse-only. */
+  function nudgePane(key: PaneKey, delta: number): void {
+    setPanes((current) => ({ ...current, [key]: clampPane(key, current[key] + delta) }));
   }
 
   async function refreshContacts(): Promise<void> {
@@ -1318,6 +1381,24 @@ export default function App() {
         </button>
       </aside>
 
+      {/* Drag to widen the folder list. Keyboard-resizable too. */}
+      <div
+        className={`pane-grip grip-folders${dragging === "folders" ? " on" : ""}`}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize folder pane"
+        aria-valuenow={panes.folders}
+        aria-valuemin={PANE_LIMITS.folders.min}
+        aria-valuemax={PANE_LIMITS.folders.max}
+        tabIndex={0}
+        onPointerDown={(e) => startPaneDrag("folders", e)}
+        onDoubleClick={() => setPanes(resetPanes())}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") nudgePane("folders", -16);
+          if (e.key === "ArrowRight") nudgePane("folders", 16);
+        }}
+      />
+
       <section className="list">
         {folder === "__calendar" ? (
           <div className="calendar">
@@ -1608,6 +1689,24 @@ export default function App() {
           </>
         )}
       </section>
+
+      {/* Drag to widen the message list — double-click either grip to reset. */}
+      <div
+        className={`pane-grip grip-list${dragging === "list" ? " on" : ""}`}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize message list"
+        aria-valuenow={panes.list}
+        aria-valuemin={PANE_LIMITS.list.min}
+        aria-valuemax={PANE_LIMITS.list.max}
+        tabIndex={0}
+        onPointerDown={(e) => startPaneDrag("list", e)}
+        onDoubleClick={() => setPanes(resetPanes())}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") nudgePane("list", -16);
+          if (e.key === "ArrowRight") nudgePane("list", 16);
+        }}
+      />
 
       <main className="read">
         {folder === "__calendar" ? (

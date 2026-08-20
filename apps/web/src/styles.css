@@ -53,8 +53,8 @@
 
   --top-h: 56px;
   --status-h: 24px;
-  --folder-w: 208px;
-  --list-w: 320px;
+  --folder-w: 224px;
+  --list-w: 380px;
 
   --radius: 2px;
   --ease: 0ms;
@@ -125,8 +125,8 @@
 
   --top-h: 42px;
   --status-h: 20px;
-  --folder-w: 180px;
-  --list-w: 280px;
+  --folder-w: 224px;
+  --list-w: 380px;
 
   --radius: 6px;
   --ease: 160ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -193,8 +193,8 @@
   --serif: var(--sans);
   --top-h: 64px;
   --status-h: 26px;
-  --folder-w: 176px;
-  --list-w: 280px;
+  --folder-w: 224px;
+  --list-w: 380px;
   --radius: 0;
   --ease: 160ms ease;
   --chrome-edge: 1px solid #f0b429;
@@ -273,13 +273,45 @@ textarea:focus-visible {
 .shell {
   height: 100%;
   display: grid;
-  grid-template-columns: var(--folder-w) var(--list-w) 1fr;
+  /* Two 5px grip columns sit between the panes and carry the drag handles. */
+  grid-template-columns: var(--folder-w) 5px var(--list-w) 5px 1fr;
   grid-template-rows: auto 1fr var(--status-h);
   grid-template-areas:
-    "top top top"
-    "folders list read"
-    "status status status";
+    "top top top top top"
+    "folders gripA list gripB read"
+    "status status status status status";
   min-height: 0;
+}
+
+/*
+ * Pane dividers.
+ *
+ * Reported: panes were fixed width and content was cut off. These are the
+ * drag handles. They are deliberately a little wider on hover than at rest —
+ * a 5px target is hard to hit, but a permanently thick bar wastes space.
+ */
+.pane-grip {
+  position: relative;
+  cursor: col-resize;
+  background: var(--line);
+  transition: background-color 140ms ease-out;
+}
+
+.grip-folders { grid-area: gripA; }
+.grip-list { grid-area: gripB; }
+
+/* Widen the hit area without widening the visible line. */
+.pane-grip::after {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+}
+
+.pane-grip:hover,
+.pane-grip:focus-visible,
+.pane-grip.on {
+  background: var(--accent);
+  outline: none;
 }
 
 /* CSS-only bar until App mounts <footer class="statusbar"> */
@@ -1188,7 +1220,8 @@ input[type="checkbox"] {
 
 @media (max-width: 900px) {
   .shell {
-    grid-template-columns: 148px 240px 1fr;
+    /* Keep the grips, just start from tighter panes on a small window. */
+    grid-template-columns: minmax(140px, var(--folder-w)) 5px minmax(220px, var(--list-w)) 5px 1fr;
   }
 
   .brand {
@@ -1207,12 +1240,16 @@ input[type="checkbox"] {
 
 @media (max-width: 720px) {
   .shell {
-    grid-template-columns: minmax(200px, 42%) 1fr;
+    grid-template-columns: minmax(200px, 42%) 5px 1fr;
     grid-template-areas:
-      "top top"
-      "list read"
-      "status status";
+      "top top top"
+      "list gripB read"
+      "status status status";
   }
+
+  /* The folder pane collapses to a drawer here, so its grip has nothing to
+     resize. The list/read divider stays useful. */
+  .grip-folders { display: none; }
 
   .folders { display: none; }
 
@@ -1264,6 +1301,9 @@ input[type="checkbox"] {
   }
 
   .read { display: none; }
+
+  /* Single column: nothing to drag. */
+  .pane-grip { display: none; }
 
   .topbar {
     flex-wrap: wrap;
