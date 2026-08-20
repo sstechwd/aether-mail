@@ -29,6 +29,9 @@ import {
 import { buildReply, buildForward } from "./reply.js";
 import { Outbox } from "./outbox.js";
 import { canonicalFolder, pickSyncFolders, sortFolders } from "./folders.js";
+import { isCalendarPart, parseIcs, toIcsFile } from "./ics.js";
+import { SignatureBook, applySignature } from "./signatures.js";
+import { harvestContacts, suggestContacts } from "./contacts.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -59,6 +62,7 @@ const sibyl = new SibylMemory(path.join(here, "data/sibyl.db"));
 const templates = new TemplateBook(path.join(here, "data/templates.json"));
 const inspectPrefs = new InspectBook(path.join(here, "data/inspect.json"));
 const outbox = Outbox.openFile(path.join(here, "data/outbox.json"));
+const signatures = SignatureBook.openFile(path.join(here, "data/signatures.json"));
 const chat = new ChatThread();
 const metaPath = path.join(here, "data/meta.json");
 type MetaFile = { lastFetchAt?: string; activeAccountId?: string };
@@ -422,6 +426,23 @@ const server = http.createServer(async (req, res) => {
       const html = rawHtml ? sanitizeMailHtml(rawHtml, { allowRemoteImages: allowImages }) : null;
       const remoteImages = message.html ? remoteImageCount(message.html) : 0;
       const { html: _raw, ...safeMessage } = message;
+      // Calendar invite? Fetch just that part and parse it, so the reading pane
+      // can show "Tuesday 3:00 PM" instead of an unreadable .ics attachment.
+      let invite = null;
+      const icsPart = parts.find((p) => isCalendarPart(p));
+      if (icsPart && message.uid) {
+        const loaded = await loadInlineParts(message, [icsPart]).catch(
+          () => ({}) as Record<string, LoadedPart>,
+        );
+        const found = loaded[String(icsPart.part)];
+        if (found?.data) {
+          try {
+            invite = parseIcs(Buffer.from(found.data, "base64").toString("utf8"));
+          } catch {
+            invite = null;
+          }
+        }
+      }
       return json(
         res,
         200,
@@ -431,6 +452,7 @@ const server = http.createServer(async (req, res) => {
           remoteImages,
           imagesOn: allowImages,
           attachments: attachmentStrip(parts),
+          invite,
           draft: drafts.get(id) ?? null,
           threat,
           inspect,
@@ -499,6 +521,52 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Outbox: what is queued or scheduled, and cancel/retry controls.
+    // Hand an invite to whatever calendar the user already uses. We write a
+    // minimal .ics and let the OS open it rather than syncing a calendar.
+    if (req.method === "POST" && url.pathname === "/api/calendar/ics") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { invite?: Parameters<typeof toIcsFile>[0] };
+      if (!body.invite) return json(res, 400, { error: "need_invite" }, origin);
+      const file = toIcsFile(body.invite);
+      res.writeHead(200, {
+        "content-type": "text/calendar; charset=utf-8",
+        "content-disposition": 'attachment; filename="invite.ics"',
+        "x-content-type-options": "nosniff",
+        ...corsHeaders(origin),
+      });
+      res.end(file);
+      return;
+    }
+
+    // Contacts harvested from mail we already have — no address book to sync.
+    if (req.method === "GET" && url.pathname === "/api/contacts") {
+      const q = url.searchParams.get("q") ?? "";
+      const account = accounts.get(activeAccountId);
+      const me = account?.email ?? "";
+      const book = harvestContacts(
+        store.allForAccount(activeAccountId).map((m) => ({
+          from: m.from,
+          to: m.to,
+          folder: m.folder,
+          date: m.date,
+        })),
+        me,
+      );
+      return json(res, 200, { contacts: q ? suggestContacts(book, q) : book.slice(0, 50) }, origin);
+    }
+
+    // Per-account signature.
+    if (req.method === "GET" && url.pathname === "/api/signature") {
+      return json(res, 200, { signature: signatures.get(activeAccountId) }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/signature") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { signature?: string };
+      signatures.set(activeAccountId, (body.signature ?? "").slice(0, 2000));
+      return json(res, 200, { signature: signatures.get(activeAccountId) }, origin);
+    }
+
     if (req.method === "GET" && url.pathname === "/api/outbox") {
       return json(res, 200, { items: outbox.list() }, origin);
     }
@@ -1027,6 +1095,10 @@ const server = http.createServer(async (req, res) => {
       } catch (e) {
         return json(res, 400, { error: "need_to_and_body", message: e instanceof Error ? e.message : String(e) }, origin);
       }
+      // Append the account signature once, at prepare time, so what the user
+      // confirms is exactly what goes out.
+      const sig = signatures.get(body.accountId || accounts.list()[0]?.id || activeAccountId);
+      if (sig) prepared.body = applySignature(prepared.body, sig);
       const confirmId = `send-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       // Attachments are local file paths chosen by the human in the compose
       // window. Validate every one now, so a bad path fails at compose time

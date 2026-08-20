@@ -24,6 +24,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export default function Settings(props: { onClose: () => void }) {
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [signature, setSignature] = useState("");
+  const [sigNote, setSigNote] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
   const [llm, setLlm] = useState<Llm | null>(null);
   const [providerId, setProviderId] = useState("gmail");
@@ -44,6 +46,12 @@ export default function Settings(props: { onClose: () => void }) {
   const [saving, setSaving] = useState(false);
   const [autoInspect, setAutoInspect] = useState(true);
   const [alwaysShow, setAlwaysShow] = useState(false);
+
+  useEffect(() => {
+    api<{ signature: string }>("/api/signature")
+      .then((d) => setSignature(d.signature ?? ""))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     api<{ providers: Provider[] }>("/api/providers").then((d) => setProviders(d.providers)).catch((e: Error) => setNote(e.message));
@@ -151,6 +159,35 @@ export default function Settings(props: { onClose: () => void }) {
         >
           Save mail account on this machine
         </button>
+      </section>
+      <section>
+        <h2>Signature</h2>
+        <p className="hint">
+          Added below what you write, and above the quoted text in a reply. Applies to the active
+          account.
+        </p>
+        <textarea
+          rows={4}
+          value={signature}
+          placeholder={"— Your name\nyou@example.com"}
+          onChange={(e) => setSignature(e.target.value)}
+        />
+        <button
+          onClick={() => {
+            void (async () => {
+              try {
+                await api("/api/signature", { method: "POST", body: JSON.stringify({ signature }) });
+                setSigNote("Saved.");
+                window.setTimeout(() => setSigNote(null), 2000);
+              } catch (e) {
+                setSigNote(e instanceof Error ? e.message : String(e));
+              }
+            })();
+          }}
+        >
+          Save signature
+        </button>
+        {sigNote ? <p className="note">{sigNote}</p> : null}
       </section>
       <section>
         <h2>Header inspect</h2>

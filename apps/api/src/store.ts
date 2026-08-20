@@ -307,6 +307,14 @@ export class MailStore {
     });
   }
 
+  /**
+   * Every message for an account, any folder. Used to harvest contacts;
+   * envelope fields only are read by the caller, so this stays cheap.
+   */
+  allForAccount(accountId: string): FixtureMessage[] {
+    return [...this.messages.values()].filter((m) => m.accountId === accountId);
+  }
+
   search(accountId: string, query: string): FixtureMessage[] {
     const q = query.trim().toLowerCase();
     if (!q) return [];

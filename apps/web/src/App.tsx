@@ -53,6 +53,35 @@ type OutboxItem = {
   queuedAt: number;
 };
 
+type Invite = {
+  summary: string;
+  description?: string;
+  location?: string;
+  organizer?: string;
+  attendees: string[];
+  start: string | null;
+  end: string | null;
+  allDay: boolean;
+  method?: string;
+  uid?: string;
+};
+
+type Contact = { address: string; name?: string; score: number };
+
+/** A human sentence for when a meeting is. Mirrors the server's formatter. */
+function inviteWhen(ev: Invite): string {
+  if (!ev.start) return "Time not specified";
+  const start = new Date(ev.start);
+  if (Number.isNaN(start.getTime())) return "Time not specified";
+  if (ev.allDay) return `${start.toLocaleDateString(undefined, { dateStyle: "full" })} · all day`;
+  const date = start.toLocaleDateString(undefined, { dateStyle: "full" });
+  const from = start.toLocaleTimeString(undefined, { timeStyle: "short" });
+  if (!ev.end) return `${date} at ${from}`;
+  const end = new Date(ev.end);
+  if (Number.isNaN(end.getTime())) return `${date} at ${from}`;
+  return `${date} · ${from} – ${end.toLocaleTimeString(undefined, { timeStyle: "short" })}`;
+}
+
 /** Bytes -> what a person reads next to a filename. */
 function humanSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
@@ -146,6 +175,10 @@ export default function App() {
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   /** When set, the compose Send button queues for later instead of sending now. */
   const [scheduleAt, setScheduleAt] = useState("");
+  /** Calendar invite found in the open message, if any. */
+  const [invite, setInvite] = useState<Invite | null>(null);
+  /** Address suggestions for the compose To field. */
+  const [contactHits, setContactHits] = useState<Contact[]>([]);
   const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -258,6 +291,7 @@ export default function App() {
         size: number;
         human: string;
       }>;
+      invite?: Invite | null;
       draft: { text: string } | null;
       threat?: { score: number; label: string; reasons: string[] };
       inspect?: {
@@ -278,6 +312,7 @@ export default function App() {
         setRemoteImages(data.remoteImages ?? 0);
         setImagesOn(Boolean(data.imagesOn));
         setAttachments(data.attachments ?? []);
+        setInvite(data.invite ?? null);
         setThreat(data.threat ?? null);
         setInspect(data.inspect ?? null);
         setShowInspect(Boolean(data.autoOpen));
@@ -365,6 +400,43 @@ export default function App() {
       setSelectedId(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Hand the invite to whatever calendar the OS has registered for .ics. */
+  async function addToCalendar(): Promise<void> {
+    if (!invite) return;
+    try {
+      const res = await fetch(apiUrl("/api/calendar/ics"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invite }),
+      });
+      if (!res.ok) throw new Error("Could not build the calendar file.");
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = `${(invite.summary || "invite").replace(/[^\w.-]+/g, "-").slice(0, 60)}.ics`;
+      a.click();
+      URL.revokeObjectURL(href);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Suggest addresses from mail we already have. No address book to sync. */
+  async function lookupContacts(query: string): Promise<void> {
+    const q = query.split(",").pop()?.trim() ?? "";
+    if (q.length < 2) {
+      setContactHits([]);
+      return;
+    }
+    try {
+      const data = await api<{ contacts: Contact[] }>(`/api/contacts?q=${encodeURIComponent(q)}`);
+      setContactHits(data.contacts ?? []);
+    } catch {
+      setContactHits([]);
     }
   }
 
@@ -1083,6 +1155,27 @@ export default function App() {
                 </button>
               </div>
             </div>
+            {invite ? (
+              <div className={`invite${invite.method === "CANCEL" ? " cancelled" : ""}`}>
+                <span className="inv-kind">
+                  {invite.method === "CANCEL" ? "Meeting cancelled" : "Calendar invite"}
+                </span>
+                <strong className="inv-title">{invite.summary || "(no title)"}</strong>
+                <span className="inv-when">{inviteWhen(invite)}</span>
+                {invite.location ? <span className="inv-where">📍 {invite.location}</span> : null}
+                {invite.organizer ? <span className="inv-who">Organizer · {invite.organizer}</span> : null}
+                {invite.attendees.length > 0 ? (
+                  <span className="inv-who">
+                    {invite.attendees.length} attendee{invite.attendees.length === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+                {invite.method !== "CANCEL" ? (
+                  <button className="inv-add" onClick={() => void addToCalendar()}>
+                    Add to calendar
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             {threat ? (
               <p className={`threat ${threat.label}`}>
                 Threat {threat.score}/100 · {threat.label}
@@ -1241,7 +1334,38 @@ export default function App() {
       {composing ? (
         <div className="compose">
           <strong>New message</strong>
-          <input placeholder="To" value={composeTo} onChange={(e) => setComposeTo(e.target.value)} />
+          <div className="to-field">
+            <input
+              placeholder="To"
+              value={composeTo}
+              onChange={(e) => {
+                setComposeTo(e.target.value);
+                void lookupContacts(e.target.value);
+              }}
+              onBlur={() => window.setTimeout(() => setContactHits([]), 150)}
+            />
+            {contactHits.length > 0 ? (
+              <div className="contact-hits">
+                {contactHits.map((c) => (
+                  <button
+                    type="button"
+                    key={c.address}
+                    onMouseDown={(e) => {
+                      // mousedown, not click: blur would close the list first.
+                      e.preventDefault();
+                      const parts = composeTo.split(",");
+                      parts[parts.length - 1] = ` ${c.address}`;
+                      setComposeTo(parts.join(",").replace(/^\s+/, ""));
+                      setContactHits([]);
+                    }}
+                  >
+                    {c.name ? <b>{c.name}</b> : null}
+                    <span>{c.address}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <input placeholder="Subject" value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} />
           <textarea rows={8} value={composeBody} onChange={(e) => setComposeBody(e.target.value)} />
           {attachFiles.length > 0 ? (

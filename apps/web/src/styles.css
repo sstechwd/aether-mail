@@ -2103,3 +2103,84 @@ textarea:focus-visible {
 .agent-page { padding: 18px 22px; overflow-y: auto; }
 .agent-page h1 { margin: 0 0 6px; font-size: 20px; color: var(--ink); }
 .agent-page .hint { max-width: 60ch; margin-bottom: 14px; }
+
+/* ---- Calendar invite card -------------------------------------------- */
+.invite {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+}
+
+.invite.cancelled {
+  border-left-color: var(--bad, #c4564a);
+  opacity: 0.75;
+}
+
+.inv-kind {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.inv-title { font-size: 15px; color: var(--ink); }
+.inv-when { font-size: 13px; color: var(--accent-soft); }
+.inv-where,
+.inv-who { font-size: 12px; color: var(--muted); }
+
+.inv-add {
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.inv-add:hover { background: var(--accent); }
+
+/* ---- Contacts autocomplete ------------------------------------------- */
+.to-field { position: relative; display: flex; flex-direction: column; }
+
+.contact-hits {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
+}
+
+.contact-hits button {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.contact-hits button:last-child { border-bottom: 0; }
+.contact-hits button:hover { background: var(--hover); }
+.contact-hits button span { color: var(--muted); font-size: 12px; }
