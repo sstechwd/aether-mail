@@ -33,6 +33,10 @@ type Message = {
   preview?: string;
   /** Non-inline attachments, for the paperclip in the list row. */
   attachmentCount?: number;
+  /** Set when the list is grouped into conversations. */
+  threadCount?: number;
+  participants?: string[];
+  threadIds?: string[];
 };
 type AgentResult = {
   skill: string;
@@ -159,6 +163,14 @@ export default function App() {
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [unreadOnly, setUnreadOnly] = useState(false);
+  /** Group the list into conversations. Persisted: it is a reading preference. */
+  const [threaded, setThreaded] = useState(() => {
+    try {
+      return localStorage.getItem("aether.threaded") === "1";
+    } catch {
+      return false;
+    }
+  });
   const [sort, setSort] = useState<"newest" | "oldest">(() => {
     try {
       return localStorage.getItem("aether.sort") === "oldest" ? "oldest" : "newest";
@@ -207,7 +219,7 @@ export default function App() {
 
   async function refreshMessages(nextFolder: string) {
     const data = await api<{ messages: Message[]; account?: string }>(
-      `/api/messages?folder=${encodeURIComponent(nextFolder)}&sort=${sort}`,
+      `/api/messages?folder=${encodeURIComponent(nextFolder)}&sort=${sort}${threaded ? "&threaded=1" : ""}`,
     );
     setMessages(data.messages);
   }
@@ -266,7 +278,7 @@ export default function App() {
     } catch {
       /* ignore */
     }
-  }, [folder, sort]);
+  }, [folder, sort, threaded]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -877,6 +889,21 @@ export default function App() {
             Unread (u)
           </button>
           <button onClick={() => setUnreadOnly((v) => !v)}>{unreadOnly ? "All mail" : "Unread only"}</button>
+          <button
+            onClick={() =>
+              setThreaded((v) => {
+                const next = !v;
+                try {
+                  localStorage.setItem("aether.threaded", next ? "1" : "0");
+                } catch {
+                  /* ignore */
+                }
+                return next;
+              })
+            }
+          >
+            {threaded ? "Flat list" : "Conversations"}
+          </button>
           <select
             className="move-to"
             value={sort}
@@ -1096,7 +1123,14 @@ export default function App() {
           >
             <span className="from">
               {m.starred ? "★ " : ""}
-              {m.from.replace(/<[^>]+>/, "").trim()}
+              {m.threadCount && m.threadCount > 1 && m.participants?.length
+                ? m.participants.map((p) => p.split("@")[0]).join(", ")
+                : m.from.replace(/<[^>]+>/, "").trim()}
+              {m.threadCount && m.threadCount > 1 ? (
+                <span className="thread-count" title={`${m.threadCount} messages`}>
+                  {m.threadCount}
+                </span>
+              ) : null}
             </span>
             <span className="subj">
               {m.attachmentCount ? (

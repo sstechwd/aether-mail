@@ -2184,3 +2184,21 @@ textarea:focus-visible {
 .contact-hits button:last-child { border-bottom: 0; }
 .contact-hits button:hover { background: var(--hover); }
 .contact-hits button span { color: var(--muted); font-size: 12px; }
+
+/* Conversation count badge in a threaded list row. */
+.thread-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  margin-left: 6px;
+  padding: 0 5px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}

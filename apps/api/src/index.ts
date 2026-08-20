@@ -32,6 +32,7 @@ import { canonicalFolder, pickSyncFolders, sortFolders } from "./folders.js";
 import { isCalendarPart, parseIcs, toIcsFile } from "./ics.js";
 import { SignatureBook, applySignature } from "./signatures.js";
 import { harvestContacts, suggestContacts } from "./contacts.js";
+import { groupIntoThreads } from "./threading.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -322,11 +323,33 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/messages") {
       const folder = url.searchParams.get("folder") ?? "INBOX";
       const order = url.searchParams.get("sort") === "oldest" ? "oldest" : "newest";
+      const messages = store.listMessages(activeAccountId, folder, order);
+      // Threading is opt-in per request so the flat list stays available and
+      // the client can toggle without a resync.
+      if (url.searchParams.get("threaded") === "1") {
+        // Group from the full rows: envelopes deliberately omit `headers`, and
+        // References/In-Reply-To live there. Only the envelope of the newest
+        // message is returned, so the response stays envelope-sized.
+        const full = store.allForAccount(activeAccountId).filter((m) => {
+          if (folder === "Starred") return Boolean(m.starred);
+          return m.folder === folder;
+        });
+        const envelopeById = new Map(messages.map((m) => [m.id, m]));
+        const threads = groupIntoThreads(full).map((t) => ({
+          ...(envelopeById.get(t.latest.id) ?? t.latest),
+          threadKey: t.key,
+          threadCount: t.count,
+          unread: t.unread,
+          participants: t.participants,
+          threadIds: t.ids,
+        }));
+        return json(res, 200, { folder, account: activeAccountId, sort: order, threaded: true, messages: threads });
+      }
       return json(res, 200, {
         folder,
         account: activeAccountId,
         sort: order,
-        messages: store.listMessages(activeAccountId, folder, order),
+        messages,
       });
     }
 

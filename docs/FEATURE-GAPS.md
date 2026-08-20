@@ -44,7 +44,7 @@ Typing a full address every time is painful. The cheap version writes itself:
 harvest addresses from mail already in the store and autocomplete the To field.
 No CardDAV needed for v1.
 
-### 5. Threading / conversation view — **hit constantly on busy mailboxes**
+### 5. Threading / conversation view — **DONE (toggle in the toolbar)**
 Messages are a flat list. Real mailboxes are conversations. `References` and
 `In-Reply-To` are already fetched, so grouping is mostly a UI problem.
 
