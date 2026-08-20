@@ -101,7 +101,7 @@ const MAX_ATTACH_TOTAL = 24 * 1024 * 1024;
 /** Sanity cap on how many files one message can carry. */
 const MAX_ATTACHMENTS = 20;
 
-const pendingSends = new Map<string, { to: string; subject: string; body: string; accountId: string; expires: number; attachments?: string[] }>();
+const pendingSends = new Map<string, { to: string; subject: string; body: string; accountId: string; expires: number; attachments?: string[]; sendAt?: number | null }>();
 
 /**
  * Inline image bytes, pulled on demand from the user's own IMAP server.
@@ -969,6 +969,7 @@ const server = http.createServer(async (req, res) => {
         draft?: { text?: string } | string;
         accountId?: string;
         attachments?: string[];
+        sendAt?: number;
       };
       if (body.confirmId) {
         const pending = pendingSends.get(body.confirmId);
@@ -979,6 +980,20 @@ const server = http.createServer(async (req, res) => {
         const account = accounts.get(pending.accountId);
         if (!account) {
           return json(res, 400, { error: "no_account", message: "Add a mail account in Settings first." }, origin);
+        }
+        // Scheduled mail goes to the Outbox instead of out now. Still gated by
+        // the same two human clicks — the token above was already consumed.
+        if (pending.sendAt) {
+          const queued = outbox.enqueue({
+            accountId: pending.accountId,
+            to: pending.to,
+            subject: pending.subject,
+            body: pending.body,
+            attachments: pending.attachments ?? [],
+            sendAt: pending.sendAt,
+          });
+          audit.append({ actor: "user", action: "outbox.queue", detail: `to=${pending.to}` });
+          return json(res, 200, { queued: true, id: queued.id, sendAt: queued.sendAt }, origin);
         }
         const sent = await runMailCli(
           buildMailCliArgs({
@@ -1059,6 +1074,7 @@ const server = http.createServer(async (req, res) => {
         accountId,
         expires: Date.now() + 5 * 60 * 1000,
         attachments: attachPaths,
+        sendAt: typeof body.sendAt === "number" && body.sendAt > Date.now() ? body.sendAt : null,
       });
       audit.append({ actor: "user", action: "send.prepare", detail: `to=${prepared.to}` });
       return json(res, 202, {

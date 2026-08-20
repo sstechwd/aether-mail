@@ -28,6 +28,25 @@
   --focus: #d4a574;
   --shadow: 0 18px 48px rgba(6, 8, 5, 0.55);
 
+  /* ——— shared motion + surface vocabulary (defined in every theme block) ———
+     --ease stays the legacy per-theme transition shorthand; these are the new
+     tokens the fluid interaction layer is built on. */
+  --curve: cubic-bezier(0.22, 1, 0.36, 1);
+  --curve-in: cubic-bezier(0.4, 0, 0.2, 1);
+  --t-fast: 120ms;
+  --t-base: 160ms;
+  --t-slow: 200ms;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --rail: var(--ok);
+  --ring: rgba(212, 165, 116, 0.32);
+  --unread-wash: linear-gradient(90deg, rgba(224, 180, 122, 0.075), rgba(224, 180, 122, 0) 46%);
+  --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0));
+  --elev-1: 0 1px 0 rgba(255, 255, 255, 0.03), 0 6px 18px rgba(4, 6, 3, 0.42);
+  --elev-2: 0 1px 0 rgba(255, 255, 255, 0.04), 0 22px 56px rgba(4, 6, 3, 0.6);
+  --scroll-thumb: #333c2c;
+  --scroll-thumb-hover: #4b5640;
+
   --sans: "Segoe UI Variable Text", "Segoe UI", "IBM Plex Sans", system-ui, sans-serif;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Cambria, Georgia, serif;
   --mono: "Cascadia Mono", "IBM Plex Mono", Consolas, "ui-monospace", monospace;
@@ -86,6 +105,22 @@
   --focus: #86d4e6;
   --shadow: 0 10px 32px rgba(2, 6, 12, 0.55);
 
+  --curve: cubic-bezier(0.22, 1, 0.36, 1);
+  --curve-in: cubic-bezier(0.4, 0, 0.2, 1);
+  --t-fast: 110ms;
+  --t-base: 150ms;
+  --t-slow: 190ms;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --rail: var(--accent);
+  --ring: rgba(134, 212, 230, 0.3);
+  --unread-wash: linear-gradient(90deg, rgba(143, 208, 228, 0.085), rgba(143, 208, 228, 0) 46%);
+  --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0));
+  --elev-1: 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(2, 6, 12, 0.5);
+  --elev-2: 0 1px 0 rgba(255, 255, 255, 0.05), 0 26px 64px rgba(2, 6, 12, 0.66);
+  --scroll-thumb: #26344a;
+  --scroll-thumb-hover: #3a5272;
+
   --serif: var(--sans);
 
   --top-h: 42px;
@@ -138,6 +173,23 @@
   --ok: #9bbb6a;
   --focus: #f0b429;
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+
+  --curve: cubic-bezier(0.22, 1, 0.36, 1);
+  --curve-in: cubic-bezier(0.4, 0, 0.2, 1);
+  --t-fast: 120ms;
+  --t-base: 160ms;
+  --t-slow: 200ms;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --rail: var(--accent);
+  --ring: rgba(240, 180, 41, 0.3);
+  --unread-wash: linear-gradient(90deg, rgba(246, 208, 119, 0.08), rgba(246, 208, 119, 0) 46%);
+  --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
+  --elev-1: 0 1px 0 rgba(255, 255, 255, 0.03), 0 8px 22px rgba(0, 0, 0, 0.6);
+  --elev-2: 0 1px 0 rgba(255, 255, 255, 0.04), 0 28px 68px rgba(0, 0, 0, 0.78);
+  --scroll-thumb: #302d26;
+  --scroll-thumb-hover: #4a463c;
+
   --serif: var(--sans);
   --top-h: 64px;
   --status-h: 26px;
@@ -1655,3 +1707,57 @@ input[type="checkbox"] {
   border-color: var(--bad, #c4564a);
   color: var(--bad, #d98b80);
 }
+
+/* ---- Outbox ---------------------------------------------------------- */
+.outbox { display: flex; flex-direction: column; }
+
+.queued {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "to actions" "subj actions" "when actions";
+  gap: 2px 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+}
+
+.q-to { grid-area: to; color: var(--muted); font-size: 12px; }
+.q-subj { grid-area: subj; color: var(--ink); font-weight: 600; }
+.q-when { grid-area: when; color: var(--muted); font-size: 12px; }
+.q-actions { grid-area: actions; display: flex; gap: 6px; }
+
+.q-actions button {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.queued.failed { border-left: 3px solid var(--bad, #c4564a); }
+.queued.failed .q-when { color: var(--bad, #d98b80); }
+
+/* Schedule picker in compose */
+.schedule {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.schedule input {
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  color: var(--ink);
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+/* Standalone assistant page */
+.agent-page { padding: 18px 22px; overflow-y: auto; }
+.agent-page h1 { margin: 0 0 6px; font-size: 20px; color: var(--ink); }
+.agent-page .hint { max-width: 60ch; margin-bottom: 14px; }

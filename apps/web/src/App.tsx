@@ -42,6 +42,17 @@ type AgentResult = {
   refused: string[];
 };
 
+type OutboxItem = {
+  id: string;
+  to: string;
+  subject: string;
+  sendAt: number | null;
+  status: "queued" | "sending" | "failed";
+  attempts: number;
+  error?: string;
+  queuedAt: number;
+};
+
 /** Bytes -> what a person reads next to a filename. */
 function humanSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
@@ -131,6 +142,10 @@ export default function App() {
   const [themeId, setThemeId] = useState(readTheme);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showFolders, setShowFolders] = useState(false);
+  /** Queued/scheduled mail waiting to go out. Local, not an IMAP folder. */
+  const [outbox, setOutbox] = useState<OutboxItem[]>([]);
+  /** When set, the compose Send button queues for later instead of sending now. */
+  const [scheduleAt, setScheduleAt] = useState("");
   const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -353,6 +368,33 @@ export default function App() {
     }
   }
 
+  async function refreshOutbox(): Promise<void> {
+    try {
+      const data = await api<{ items: OutboxItem[] }>("/api/outbox");
+      setOutbox(data.items ?? []);
+    } catch {
+      /* the outbox view will just show empty */
+    }
+  }
+
+  async function cancelQueued(id: string): Promise<void> {
+    try {
+      await api(`/api/outbox/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+      await refreshOutbox();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function retryQueued(id: string): Promise<void> {
+    try {
+      await api(`/api/outbox/${encodeURIComponent(id)}/retry`, { method: "POST" });
+      await refreshOutbox();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   /**
    * Send what is in the compose window. Two human clicks, exactly like the
    * reply path: the first prepares and returns a token, the second delivers.
@@ -364,6 +406,7 @@ export default function App() {
       const data = await api<{
         confirmId?: string;
         sent?: boolean;
+        queued?: boolean;
         message?: string;
         preview?: { to: string; subject: string };
       }>("/api/send", {
@@ -374,9 +417,11 @@ export default function App() {
           draft: composeBody,
           confirmId: composeConfirm,
           attachments: attachFiles.map((f) => f.path),
+          // Empty means send now. A date-time means queue it in the Outbox.
+          sendAt: scheduleAt ? new Date(scheduleAt).getTime() : undefined,
         }),
       });
-      if (data.sent) {
+      if (data.sent || data.queued) {
         setComposeConfirm(null);
         setComposeNote(null);
         setComposing(false);
@@ -384,7 +429,9 @@ export default function App() {
         setComposeSubject("");
         setComposeBody("");
         setAttachFiles([]);
-        setSendNote("Sent via SMTP.");
+        setScheduleAt("");
+        setSendNote(data.queued ? "Queued in the Outbox." : "Sent via SMTP.");
+        void refreshOutbox();
         refreshFolders().catch(() => undefined);
       } else if (data.confirmId) {
         setComposeConfirm(data.confirmId);
@@ -897,10 +944,74 @@ export default function App() {
             </span>
           </button>
         ))}
+        {/* Outbox is local, not an IMAP folder — it only exists on this machine
+            until the queue drains, so it is listed separately. */}
+        <button
+          className={folder === "Outbox" ? "folder on" : "folder"}
+          onClick={() => {
+            setFolder("Outbox");
+            setSelectedId(null);
+            setAgent(null);
+            setShowFolders(false);
+            void refreshOutbox();
+          }}
+        >
+          <span>Outbox</span>
+          <span className="counts">{outbox.length > 0 ? <b>{outbox.length}</b> : null}</span>
+        </button>
+        <button
+          className={folder === "__agent" ? "folder on" : "folder"}
+          onClick={() => {
+            setFolder("__agent");
+            setSelectedId(null);
+            setShowFolders(false);
+          }}
+        >
+          <span>✦ Assistant</span>
+        </button>
       </aside>
 
       <section className="list">
-        {visible.map((m) => (
+        {folder === "Outbox" ? (
+          <div className="outbox">
+            {outbox.length === 0 ? (
+              <p className="empty">
+                Nothing waiting. Mail you schedule with “Send later” waits here — it goes out even if
+                you close the app.
+              </p>
+            ) : (
+              outbox.map((item) => (
+                <div className={`queued ${item.status}`} key={item.id}>
+                  <span className="q-to">{item.to}</span>
+                  <span className="q-subj">{item.subject || "(no subject)"}</span>
+                  <span className="q-when">
+                    {item.status === "failed"
+                      ? `Failed — ${item.error ?? "unknown"} (tried ${item.attempts}×)`
+                      : item.sendAt
+                        ? `Goes out ${new Date(item.sendAt).toLocaleString(undefined, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}`
+                        : "Sending shortly"}
+                  </span>
+                  <span className="q-actions">
+                    {item.status === "failed" ? (
+                      <button onClick={() => void retryQueued(item.id)}>Retry</button>
+                    ) : null}
+                    <button onClick={() => void cancelQueued(item.id)}>Cancel</button>
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        ) : folder === "__agent" ? (
+          <p className="empty">
+            The assistant reads your mail to answer, drafts replies, and can explain a thread. It can
+            never send or delete — that is always your click.
+          </p>
+        ) : (
+          <>
+            {visible.map((m) => (
           <button
             key={m.id}
             className={`row${m.id === selectedId ? " on" : ""}${m.unread ? " unread" : ""}`}
@@ -928,10 +1039,21 @@ export default function App() {
           </button>
         ))}
         {visible.length === 0 ? <p className="empty">{unreadOnly ? "No unread in this folder." : "No messages."}</p> : null}
+          </>
+        )}
       </section>
 
       <main className="read">
-        {!selected ? (
+        {folder === "__agent" ? (
+          <div className="agent-page">
+            <h1>✦ Assistant</h1>
+            <p className="hint">
+              Ask about your mail without opening a message. Runs on your own key or a local model —
+              nothing leaves this machine unless you configured a hosted one.
+            </p>
+            <AgentChat messageId={null} />
+          </div>
+        ) : !selected ? (
           <>
             <p className="empty tall">Select a message. Chat still works on whatever you open next.</p>
             <AgentChat messageId={null} />
@@ -1143,12 +1265,30 @@ export default function App() {
           <div className="sendrow">
             <button onClick={() => void pickAttachments()}>📎 Attach</button>
             <button onClick={() => saveDraft()}>Save draft</button>
+            <label className="schedule">
+              <span>Send later</span>
+              <input
+                type="datetime-local"
+                value={scheduleAt}
+                onChange={(e) => {
+                  setScheduleAt(e.target.value);
+                  // Changing when it goes out invalidates any pending confirm.
+                  setComposeConfirm(null);
+                }}
+              />
+            </label>
             <button
               className="danger"
               disabled={!composeTo.trim() || !composeBody.trim()}
               onClick={() => void sendCompose()}
             >
-              {composeConfirm ? "Confirm send — click to deliver" : "Send…"}
+              {composeConfirm
+                ? scheduleAt
+                  ? "Confirm — queue it"
+                  : "Confirm send — click to deliver"
+                : scheduleAt
+                  ? "Schedule…"
+                  : "Send…"}
             </button>
             <button
               onClick={() => {
