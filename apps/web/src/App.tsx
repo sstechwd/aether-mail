@@ -146,6 +146,9 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [composeTo, setComposeTo] = useState("");
   const [attachFiles, setAttachFiles] = useState<Array<{ path: string; name: string; size: number }>>([]);
+  /** Confirm token for a compose-window send. Two clicks, same as replies. */
+  const [composeConfirm, setComposeConfirm] = useState<string | null>(null);
+  const [composeNote, setComposeNote] = useState<string | null>(null);
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
 
@@ -347,6 +350,51 @@ export default function App() {
       setSelectedId(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /**
+   * Send what is in the compose window. Two human clicks, exactly like the
+   * reply path: the first prepares and returns a token, the second delivers.
+   * The agent has no route into this — it is a click handler.
+   */
+  async function sendCompose(): Promise<void> {
+    setComposeNote(null);
+    try {
+      const data = await api<{
+        confirmId?: string;
+        sent?: boolean;
+        message?: string;
+        preview?: { to: string; subject: string };
+      }>("/api/send", {
+        method: "POST",
+        body: JSON.stringify({
+          to: composeTo,
+          subject: composeSubject,
+          draft: composeBody,
+          confirmId: composeConfirm,
+          attachments: attachFiles.map((f) => f.path),
+        }),
+      });
+      if (data.sent) {
+        setComposeConfirm(null);
+        setComposeNote(null);
+        setComposing(false);
+        setComposeTo("");
+        setComposeSubject("");
+        setComposeBody("");
+        setAttachFiles([]);
+        setSendNote("Sent via SMTP.");
+        refreshFolders().catch(() => undefined);
+      } else if (data.confirmId) {
+        setComposeConfirm(data.confirmId);
+        setComposeNote(
+          `${data.message ?? "Click Send again to deliver."}${data.preview ? ` → ${data.preview.to}` : ""}`,
+        );
+      }
+    } catch (e) {
+      setComposeConfirm(null);
+      setComposeNote(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -1095,8 +1143,24 @@ export default function App() {
           <div className="sendrow">
             <button onClick={() => void pickAttachments()}>📎 Attach</button>
             <button onClick={() => saveDraft()}>Save draft</button>
-            <button onClick={() => setComposing(false)}>Cancel</button>
+            <button
+              className="danger"
+              disabled={!composeTo.trim() || !composeBody.trim()}
+              onClick={() => void sendCompose()}
+            >
+              {composeConfirm ? "Confirm send — click to deliver" : "Send…"}
+            </button>
+            <button
+              onClick={() => {
+                setComposing(false);
+                setComposeConfirm(null);
+                setComposeNote(null);
+              }}
+            >
+              Cancel
+            </button>
           </div>
+          {composeNote ? <p className="note">{composeNote}</p> : null}
         </div>
       ) : null}
       {showSettings ? <Settings onClose={() => setShowSettings(false)} /> : null}
