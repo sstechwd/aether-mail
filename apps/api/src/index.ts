@@ -35,6 +35,7 @@ import { harvestContacts, suggestContacts } from "./contacts.js";
 import { groupIntoThreads } from "./threading.js";
 import { parseJsonBody, asString, asStringArray } from "./reqbody.js";
 import { CalendarStore } from "./calendar.js";
+import { ImagePolicy } from "./imagepolicy.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -67,6 +68,7 @@ const inspectPrefs = new InspectBook(path.join(here, "data/inspect.json"));
 const outbox = Outbox.openFile(path.join(here, "data/outbox.json"));
 const signatures = SignatureBook.openFile(path.join(here, "data/signatures.json"));
 const calendar = CalendarStore.openFile(path.join(here, "data/calendar.json"));
+const imagePolicy = ImagePolicy.openFile(path.join(here, "data/images.json"));
 /**
  * Addresses the user removed from Contacts. Kept separately from the mail
  * store: the message they came from is still there, so without this list a
@@ -456,7 +458,11 @@ const server = http.createServer(async (req, res) => {
       const autoOpen = Boolean(
         inspect && ((prefs.autoInspect && inspect.label !== "ok") || prefs.alwaysShow),
       );
-      const allowImages = url.searchParams.get("images") === "1";
+      // The explicit ?images= param wins for this one view; otherwise the
+      // remembered policy decides, so a trusted sender loads without a click.
+      const imagesParam = url.searchParams.get("images");
+      const allowImages =
+        imagesParam === "1" ? true : imagesParam === "0" ? false : imagePolicy.allows(message.from);
       // Inline cid: parts are resolved from the message's own MIME bytes BEFORE
       // sanitizing, because the sanitizer replaces any leftover cid: with a
       // placeholder. Nothing here touches the network.
@@ -669,6 +675,24 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(url.pathname.slice("/api/calendar/".length));
       const ok = calendar.remove(id);
       return json(res, ok ? 200 : 404, { removed: ok }, origin);
+    }
+
+    // Remote image policy: ask (default) / always / never, plus trusted senders.
+    if (req.method === "GET" && url.pathname === "/api/images/policy") {
+      return json(res, 200, { mode: imagePolicy.mode(), trusted: imagePolicy.trusted() }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/images/policy") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      const mode = asString(body.mode);
+      if (mode === "ask" || mode === "always" || mode === "never") imagePolicy.setMode(mode);
+      const trust = asString(body.trust);
+      if (trust) imagePolicy.trust(trust);
+      const untrust = asString(body.untrust);
+      if (untrust) imagePolicy.untrust(untrust);
+      return json(res, 200, { mode: imagePolicy.mode(), trusted: imagePolicy.trusted() }, origin);
     }
 
     // Per-account signature.

@@ -292,6 +292,9 @@ export default function App() {
   const [panes, setPanes] = useState<PaneWidths>(() => loadPanes());
   /** Which divider is being dragged right now, if any. */
   const [dragging, setDragging] = useState<PaneKey | null>(null);
+  /** Message id being dragged onto a folder, and the folder under the cursor. */
+  const [dragMsg, setDragMsg] = useState<string | null>(null);
+  const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -873,6 +876,43 @@ export default function App() {
     if (data.message) await applyMessage(data.message);
   }
 
+  /** Move any message by id — used by drag-and-drop onto a folder. */
+  async function moveMessage(id: string, dest: string): Promise<void> {
+    try {
+      const data = await api<{ folders: Folder[] }>(`/api/messages/${id}/move`, {
+        method: "POST",
+        body: JSON.stringify({ folder: dest }),
+      });
+      setFolders(data.folders);
+      setMessages((ms) => ms.filter((m) => m.id !== id));
+      if (selectedId === id) setSelectedId(null);
+      setSendNote(`Moved to ${dest}.`);
+      window.setTimeout(() => setSendNote(null), 1800);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Trust this sender's images from now on. */
+  async function trustSenderImages(): Promise<void> {
+    if (!selected) return;
+    try {
+      await api("/api/images/policy", {
+        method: "POST",
+        body: JSON.stringify({ trust: selected.from }),
+      });
+      const d = await api<{ html?: string | null; imagesOn?: boolean }>(
+        `/api/messages/${selected.id}?images=1`,
+      );
+      setMailHtml(d.html ?? null);
+      setImagesOn(true);
+      setSendNote("Images from this sender will load from now on.");
+      window.setTimeout(() => setSendNote(null), 2400);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function moveSelected(dest: string) {
     const current = selectedRef.current;
     if (!current) return;
@@ -1296,7 +1336,25 @@ export default function App() {
         {folders.map((f) => (
           <button
             key={f.name}
-            className={f.name === folder ? "folder on" : "folder"}
+            className={`folder${f.name === folder ? " on" : ""}${
+              dropFolder === f.name ? " drop" : ""
+            }`}
+            onDragOver={(e) => {
+              // Only a real message drag may drop here, and never onto the
+              // folder it already lives in.
+              if (!dragMsg || f.name === folder) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDropFolder(f.name);
+            }}
+            onDragLeave={() => setDropFolder((d) => (d === f.name ? null : d))}
+            onDrop={(e) => {
+              e.preventDefault();
+              const id = e.dataTransfer.getData("text/plain") || dragMsg;
+              setDropFolder(null);
+              setDragMsg(null);
+              if (id) void moveMessage(id, f.name);
+            }}
             onClick={() => {
               setFolder(f.name);
               setSelectedId(null);
@@ -1654,7 +1712,19 @@ export default function App() {
             {visible.map((m) => (
           <button
             key={m.id}
-            className={`row${m.id === selectedId ? " on" : ""}${m.unread ? " unread" : ""}`}
+            className={`row${m.id === selectedId ? " on" : ""}${m.unread ? " unread" : ""}${
+              dragMsg === m.id ? " dragging" : ""
+            }`}
+            draggable
+            onDragStart={(e) => {
+              setDragMsg(m.id);
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", m.id);
+            }}
+            onDragEnd={() => {
+              setDragMsg(null);
+              setDropFolder(null);
+            }}
             onClick={() => {
               setSelectedId(m.id);
               setAgent(null);
@@ -1924,8 +1994,18 @@ export default function App() {
                       .catch((e: Error) => setError(e.message));
                   }}
                 >
-                  {imagesOn ? "Block images" : "Load images"}
+                  {imagesOn ? "Hide images" : "Load images"}
                 </button>
+                {!imagesOn ? (
+                  <button
+                    type="button"
+                    className="inline"
+                    onClick={() => void trustSenderImages()}
+                    title="Remember this sender and stop asking"
+                  >
+                    Always from this sender
+                  </button>
+                ) : null}
               </p>
             ) : selected.hiddenMedia ? (
               <p className="hint">

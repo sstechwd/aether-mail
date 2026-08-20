@@ -2561,3 +2561,74 @@ textarea:focus-visible {
 }
 .contacts-bar button.on { background: var(--accent-dim); border-color: var(--accent); color: var(--ink); }
 .contact-actions { display: flex; gap: 6px; }
+
+/* ===================================================================
+   Theme: Midnight — modern dark, blue accent (direction C).
+   Deep navy rather than near-black, soft pill selection, product-app
+   feel. Same tokens, so every component follows automatically.
+   =================================================================== */
+:root[data-theme="midnight"] {
+  --bg: #0f1117;
+  --bg-raised: #141720;
+  --panel: #141720;
+  --panel-2: #1a1e2b;
+  --chrome: #0c0e14;
+  --ink: #e7e9ee;
+  --ink-soft: #c3c8d4;
+  --muted: #7d8496;
+  --faint: #565d6f;
+  --line: #1e2230;
+  --line-strong: #2a3042;
+  --accent: #5b8cff;
+  --accent-soft: #8fb0ff;
+  --accent-dim: rgba(91, 140, 255, 0.16);
+  --hover: rgba(91, 140, 255, 0.07);
+  --select: rgba(91, 140, 255, 0.13);
+  --good: #3fb27f;
+  --warn: #e0a33e;
+  --bad: #e2564d;
+  --radius: 8px;
+}
+
+/* ===================================================================
+   Theme: Paper — quiet editorial light (direction B).
+   For anyone who does not want a dark client. Warm off-white, deep
+   green accent, generous spacing.
+   =================================================================== */
+:root[data-theme="paper"] {
+  --bg: #fbfbfa;
+  --bg-raised: #ffffff;
+  --panel: #f4f4f2;
+  --panel-2: #eeeeeb;
+  --chrome: #efefec;
+  --ink: #1a1a19;
+  --ink-soft: #3d3d3a;
+  --muted: #77776f;
+  --faint: #9c9c93;
+  --line: #e2e2dd;
+  --line-strong: #d0d0c9;
+  --accent: #3d5a3d;
+  --accent-soft: #2f472f;
+  --accent-dim: rgba(61, 90, 61, 0.12);
+  --hover: rgba(61, 90, 61, 0.06);
+  --select: rgba(61, 90, 61, 0.11);
+  --good: #2f7d54;
+  --warn: #9a6b1a;
+  --bad: #a83a32;
+  --radius: 8px;
+}
+
+/* Light theme needs the mail frame and scrollbars to follow suit. */
+:root[data-theme="paper"] .mail-frame { background: #fff; }
+:root[data-theme="paper"] ::-webkit-scrollbar-thumb { background: #d0d0c9; }
+
+/* ===== Drag a message onto a folder ================================== */
+.row[draggable="true"] { cursor: grab; }
+.row.dragging { opacity: 0.45; cursor: grabbing; }
+
+/* The folder you are hovering while dragging. */
+.folder.drop {
+  background: var(--accent-dim);
+  box-shadow: inset 2px 0 0 var(--accent);
+  transform: translateX(2px);
+}
