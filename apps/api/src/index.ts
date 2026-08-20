@@ -36,6 +36,8 @@ import { groupIntoThreads } from "./threading.js";
 import { parseJsonBody, asString, asStringArray } from "./reqbody.js";
 import { CalendarStore } from "./calendar.js";
 import { ImagePolicy } from "./imagepolicy.js";
+import { RuleBook } from "./rules.js";
+import { SnoozeBook, snoozeUntil, type SnoozePreset } from "./snooze.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -69,6 +71,25 @@ const outbox = Outbox.openFile(path.join(here, "data/outbox.json"));
 const signatures = SignatureBook.openFile(path.join(here, "data/signatures.json"));
 const calendar = CalendarStore.openFile(path.join(here, "data/calendar.json"));
 const imagePolicy = ImagePolicy.openFile(path.join(here, "data/images.json"));
+const ruleBook = RuleBook.openFile(path.join(here, "data/rules.json"));
+const snoozeBook = SnoozeBook.openFile(path.join(here, "data/snooze.json"));
+
+/**
+ * Wake any snoozed message whose time has come, and put it back where it was.
+ *
+ * Runs at startup and on a tick, the same way the Outbox drains — so a snooze
+ * set before closing the app still fires when it reopens.
+ */
+function wakeSnoozed(): void {
+  const due = snoozeBook.due(Date.now());
+  if (due.length === 0) return;
+  for (const item of due) {
+    if (store.getMessage(item.id)) store.move(item.id, item.from);
+    snoozeBook.remove(item.id);
+  }
+  store.saveNow();
+  audit.append({ actor: "workflow", action: "snooze.wake", detail: `${due.length} message(s)` });
+}
 /**
  * Addresses the user removed from Contacts. Kept separately from the mail
  * store: the message they came from is still there, so without this list a
@@ -307,10 +328,15 @@ async function drainOutbox(): Promise<void> {
 
 const outboxTimer = setInterval(() => {
   void drainOutbox();
+  // Snoozed mail wakes on the same tick — one scheduler, two queues.
+  wakeSnoozed();
 }, 30_000);
 if (typeof outboxTimer.unref === "function") outboxTimer.unref();
 // Catch anything that came due while the app was closed.
-setTimeout(() => void drainOutbox(), 3_000).unref?.();
+setTimeout(() => {
+  void drainOutbox();
+  wakeSnoozed();
+}, 3_000).unref?.();
 
 const server = http.createServer(async (req, res) => {
   if (!req.url || !req.method) return notFound(res);
@@ -721,6 +747,114 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(url.pathname.slice("/api/calendar/".length));
       const ok = calendar.remove(id);
       return json(res, ok ? 200 : 404, { removed: ok }, origin);
+    }
+
+    // Filing rules. Deterministic, user-visible, and structurally unable to
+    // send: the action type has no reply or forward variant.
+    if (req.method === "GET" && url.pathname === "/api/rules") {
+      return json(res, 200, { rules: ruleBook.list() }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/rules") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      const field = asString(body.field);
+      const action = asString(body.action);
+      if (!["from", "to", "subject"].includes(field)) {
+        return json(res, 400, { error: "bad_field" }, origin);
+      }
+      if (!["move", "star", "read"].includes(action)) {
+        return json(res, 400, { error: "bad_action" }, origin);
+      }
+      try {
+        const rule = ruleBook.add({
+          field: field as "from" | "to" | "subject",
+          contains: asString(body.contains, "", 300),
+          action: action as "move" | "star" | "read",
+          folder: asString(body.folder, "", 200) || undefined,
+          enabled: true,
+        });
+        audit.append({ actor: "user", action: "rule.add", detail: `${field} ~ ${rule.contains}` });
+        return json(res, 201, { rule, rules: ruleBook.list() }, origin);
+      } catch (e) {
+        return json(res, 400, { error: e instanceof Error ? e.message : "bad_rule" }, origin);
+      }
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/rules/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/rules/".length));
+      const ok = ruleBook.remove(id);
+      return json(res, ok ? 200 : 404, { removed: ok, rules: ruleBook.list() }, origin);
+    }
+
+    /**
+     * Run every rule over the current folder.
+     *
+     * Explicit rather than automatic on sync: the user presses the button and
+     * sees what happened. Filing a mailbox behind someone's back the first
+     * time they write a rule is how you lose their trust in the feature.
+     */
+    if (req.method === "POST" && url.pathname === "/api/rules/run") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw) ?? {};
+      const folder = asString(body.folder, "INBOX", 200) || "INBOX";
+      let filed = 0;
+      for (const msg of store.listMessages(activeAccountId, folder, "newest")) {
+        const rule = ruleBook.apply({
+          from: msg.from ?? "",
+          to: msg.to ?? "",
+          subject: msg.subject ?? "",
+          folder: msg.folder ?? folder,
+        });
+        if (!rule) continue;
+        if (rule.action === "move" && rule.folder) store.move(msg.id, rule.folder);
+        else if (rule.action === "star") store.setStarred(msg.id, true);
+        else if (rule.action === "read") store.markRead(msg.id);
+        filed += 1;
+      }
+      store.saveNow();
+      audit.append({ actor: "user", action: "rule.run", detail: `${filed} message(s)` });
+      return json(res, 200, { filed, folders: store.listFolders(activeAccountId) }, origin);
+    }
+
+    // Snooze: hide a message until a time, then restore it where it was.
+    if (req.method === "GET" && url.pathname === "/api/snooze") {
+      wakeSnoozed();
+      return json(res, 200, { items: snoozeBook.list() }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/snooze") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      const id = asString(body.id, "", 400);
+      const preset = asString(body.preset);
+      const msg = id ? store.getMessage(id) : null;
+      if (!msg) return json(res, 404, { error: "no_message" }, origin);
+      if (!["later", "tomorrow", "week", "weekend"].includes(preset)) {
+        return json(res, 400, { error: "bad_preset" }, origin);
+      }
+      const wakeAt = snoozeUntil(preset as SnoozePreset).getTime();
+      snoozeBook.add(id, msg.folder ?? "INBOX", wakeAt);
+      store.move(id, "Snoozed");
+      store.saveNow();
+      audit.append({ actor: "user", action: "snooze.set", detail: preset });
+      return json(res, 200, { wakeAt, folders: store.listFolders(activeAccountId) }, origin);
+    }
+
+    // Wake a snoozed message early.
+    if (req.method === "POST" && url.pathname === "/api/snooze/wake") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      const id = asString(body.id, "", 400);
+      const item = snoozeBook.list().find((i) => i.id === id);
+      if (!item) return json(res, 404, { error: "not_snoozed" }, origin);
+      store.move(item.id, item.from);
+      snoozeBook.remove(item.id);
+      store.saveNow();
+      return json(res, 200, { woke: id, folders: store.listFolders(activeAccountId) }, origin);
     }
 
     // Remote image policy: ask (default) / always / never, plus trusted senders.
