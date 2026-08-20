@@ -46,3 +46,4 @@ data/*.jsonl
 .hermes/cache/
 .hermes/focus-app.ps1
 .hermes/ram.ps1
+.hermes/branch-protection.json

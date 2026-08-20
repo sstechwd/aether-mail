@@ -20,6 +20,8 @@ with an in-process agent. Private repo, MIT-intent core.
 - TDD: write the failing test first.
 - Repo is **public** (MIT). Push only when the human asks. Assume every commit, message, and
   branch name is world-readable: no mailbox contents, no personal addresses, no credentials.
+- Work lands on **`dev`**, not `main`. `main` is protected and must stay green — it is what a
+  stranger clones. Merge `dev` → `main` with `--ff-only` once tests pass. See `docs/BRANCHING.md`.
 
 ## If you are a fresh session with no other context
 
