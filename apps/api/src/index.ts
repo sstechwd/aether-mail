@@ -33,6 +33,7 @@ import { isCalendarPart, parseIcs, toIcsFile } from "./ics.js";
 import { SignatureBook, applySignature } from "./signatures.js";
 import { harvestContacts, suggestContacts } from "./contacts.js";
 import { groupIntoThreads } from "./threading.js";
+import { parseJsonBody, asString, asStringArray } from "./reqbody.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -531,15 +532,16 @@ const server = http.createServer(async (req, res) => {
     // never sends. Sending still requires the two-click confirm flow.
     if (req.method === "POST" && url.pathname === "/api/compose/reply") {
       const raw = await readBody(req);
-      const body = JSON.parse(raw || "{}") as { messageId?: string; mode?: string };
-      const src = body.messageId ? store.getMessage(body.messageId) : undefined;
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      const messageId = asString(body.messageId);
+      const src = messageId ? store.getMessage(messageId) : undefined;
       if (!src) return json(res, 404, { error: "unknown_message" }, origin);
       const account = accounts.get(src.accountId);
       const me = account?.email ?? src.to ?? "";
+      const mode = asString(body.mode);
       const composed =
-        body.mode === "forward"
-          ? buildForward(src)
-          : buildReply(src, { me, all: body.mode === "all" });
+        mode === "forward" ? buildForward(src) : buildReply(src, { me, all: mode === "all" });
       return json(res, 200, { compose: composed }, origin);
     }
 
@@ -548,9 +550,26 @@ const server = http.createServer(async (req, res) => {
     // minimal .ics and let the OS open it rather than syncing a calendar.
     if (req.method === "POST" && url.pathname === "/api/calendar/ics") {
       const raw = await readBody(req);
-      const body = JSON.parse(raw || "{}") as { invite?: Parameters<typeof toIcsFile>[0] };
-      if (!body.invite) return json(res, 400, { error: "need_invite" }, origin);
-      const file = toIcsFile(body.invite);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      const src = body.invite;
+      if (!src || typeof src !== "object" || Array.isArray(src)) {
+        return json(res, 400, { error: "need_invite" }, origin);
+      }
+      // Coerce every field: a client sending {summary: 42} must get a 400 or a
+      // sane file, never a 500 from .replace() on a number.
+      const inv = src as Record<string, unknown>;
+      const file = toIcsFile({
+        summary: asString(inv.summary, "(no title)", 500),
+        description: asString(inv.description, "", 5000) || undefined,
+        location: asString(inv.location, "", 500) || undefined,
+        organizer: asString(inv.organizer, "", 320) || undefined,
+        attendees: asStringArray(inv.attendees, 200),
+        start: asString(inv.start) || null,
+        end: asString(inv.end) || null,
+        allDay: inv.allDay === true,
+        uid: asString(inv.uid, "", 200) || undefined,
+      });
       res.writeHead(200, {
         "content-type": "text/calendar; charset=utf-8",
         "content-disposition": 'attachment; filename="invite.ics"',
@@ -585,8 +604,9 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/signature") {
       const raw = await readBody(req);
-      const body = JSON.parse(raw || "{}") as { signature?: string };
-      signatures.set(activeAccountId, (body.signature ?? "").slice(0, 2000));
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      signatures.set(activeAccountId, asString(body.signature, "", 2000));
       return json(res, 200, { signature: signatures.get(activeAccountId) }, origin);
     }
 
