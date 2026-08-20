@@ -22,15 +22,25 @@ if errorlevel 1 (
 )
 
 echo.
-echo [1/4] Building mail engine ^(aether-cli^)...
+echo [1/5] Closing any running copy of Aether Mail...
+REM A running app holds aether-desktop.exe open, and the Tauri build then dies
+REM with "Os { code: 5, kind: PermissionDenied }" from its build script. Close
+REM it first rather than leaving a confusing failure.
+taskkill /IM aether-desktop.exe /F >nul 2>&1
+taskkill /IM aether-api.exe /F >nul 2>&1
+REM Give Windows a moment to release the file handles.
+ping -n 3 127.0.0.1 >nul
+
+echo.
+echo [2/5] Building mail engine ^(aether-cli^)...
 cargo build --release -p aether-cli || goto :failed
 
 echo.
-echo [2/4] Building API sidecar...
+echo [3/5] Building API sidecar...
 call npm run sidecar:build || goto :failed
 
 echo.
-echo [3/4] Checking for the Tauri CLI...
+echo [4/5] Checking for the Tauri CLI...
 cargo tauri --version >nul 2>&1
 if errorlevel 1 (
   echo       Not found. Installing it once ^(this takes a few minutes^)...
@@ -38,7 +48,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [4/4] Building the app and installer...
+echo [5/5] Building the app and installer...
 cargo tauri build --config apps/desktop/tauri.conf.json || goto :failed
 
 echo.
