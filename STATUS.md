@@ -1,6 +1,6 @@
 # STATUS.md — morning briefing
 
-**Updated:** 2026-08-19 (MIME + Tauri + public-release session) · repo is **PUBLIC** and pushed.
+**Updated:** 2026-08-20 (folders, outbox, calendar, contacts, threading) · repo is **PUBLIC** and pushed.
 
 For full technical state, read **`CHECKPOINT.md`** first. This file is the human-facing "what to click" version.
 
@@ -18,6 +18,19 @@ unknown publisher — that's the missing code-signing cert, not a problem with t
 Still want the dev loop? `scripts\start-mvp.bat` → http://127.0.0.1:5173/
 
 ## What works
+
+Run it: double-click `scripts/run-app.bat`. Rebuild: `scripts/build-app.bat`.
+
+- **Folders** — INBOX, Sent, Drafts, Trash, Spam with live counts.
+- **Conversations** — toggle in the toolbar. Your inbox collapses 149 rows to 102.
+- **Outbox + Send later** — pick a date/time in compose; it goes out even if you close the app.
+  Cancel or retry anything queued.
+- **Calendar invites** — a meeting invite shows a card with the time and an Add to calendar button.
+- **Signatures** — set one in Settings; it is added when you confirm a send.
+- **Contacts** — start typing in To and it suggests people you already email.
+- **Assistant** — the sidebar has a standalone chat. It still cannot send or delete.
+
+
 
 - **Folders** — INBOX, Sent, Drafts, Trash, Spam sync from your real mailbox with live counts.
 - **Outbox + Send later** — pick a date/time in compose and the mail waits in the Outbox.

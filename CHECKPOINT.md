@@ -61,6 +61,29 @@ scripts/          start-mvp.bat (boot API+Vite), sibyl_aether.py, build-sidecar.
 · attachment strip with on-demand download (`GET /api/messages/:id/parts/:n`) · inline `cid:` images resolved
 from the message's own bytes (no network) and rendered as `data:` in the sandbox.
 
+**Desktop app:** Tauri 2 shell (`apps/desktop/`), Node API compiled to a self-contained sidecar via
+Node SEA — no Node install required. `scripts/run-app.bat` runs it, `scripts/build-app.bat` rebuilds.
+NSIS installer at `target/release/bundle/nsis/`. Unsigned; trust comes from build provenance +
+SHA256SUMS instead (`docs/SIGNING.md`).
+
+**Mail client features (2026-08-20):**
+- **Folders** — INBOX/Sent/Drafts/Trash/Spam synced from the real server. Provider names differ
+  (`[Gmail]/Sent Mail` vs `Sent Items`); `apps/api/src/folders.ts` maps remote → canonical. Prefers a
+  namespaced folder over a stray lookalike, or Sent syncs the wrong (empty) one.
+- **Outbox + scheduled send** — "Send later" in compose queues to `data/outbox.json`; a worker drains
+  every 30s and once at startup, so mail queued before the app closed goes out on next launch.
+  Cancel/retry, gives up after 3 attempts. Verified across a real 12-hour closure.
+- **Reply / Reply-all / Forward / Delete** on an open message.
+- **Attachments both directions** — 📎 picker in compose, real multipart/mixed from Rust.
+- **Calendar invites** — `text/calendar` + `.ics` detected (Outlook sends them as octet-stream, so
+  the extension is checked too). Invite card + "Add to calendar" writes an .ics for the OS.
+- **Signatures** — per account, applied at send-prepare so what you confirm is what goes out.
+- **Contacts autocomplete** — harvested from the store, no CardDAV. +3 if you wrote to them, +1 if
+  they wrote to you, −2 for no-reply.
+- **Threading** — Conversations/Flat toggle. References/In-Reply-To first, normalized subject as
+  fallback. Live mailbox: 149 rows → 102, 37 conversations.
+- **Standalone assistant** — `✦ Assistant` in the sidebar, chat with no message open.
+
 ## 5. Hard rules (violating = wrong)
 
 - **Client only.** No hosted inbox. Not a Thunderbird fork (ADR 0001).
