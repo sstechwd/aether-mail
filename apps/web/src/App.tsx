@@ -72,6 +72,32 @@ type Invite = {
 
 type Contact = { address: string; name?: string; score: number };
 
+type CalEvent = {
+  id: string;
+  summary: string;
+  description?: string;
+  location?: string;
+  organizer?: string;
+  attendees?: string[];
+  start: string;
+  end: string | null;
+  allDay: boolean;
+  messageId?: string;
+};
+
+/** Glyphs, not emoji: they inherit the theme colour and stay crisp at any size. */
+const FOLDER_ICONS: Record<string, string> = {
+  INBOX: "▾",
+  Inbox: "▾",
+  Sent: "↑",
+  Drafts: "✎",
+  Trash: "⌫",
+  Spam: "⚠",
+  Junk: "⚠",
+  Archive: "▤",
+  Starred: "★",
+};
+
 /** A human sentence for when a meeting is. Mirrors the server's formatter. */
 function inviteWhen(ev: Invite): string {
   if (!ev.start) return "Time not specified";
@@ -191,6 +217,15 @@ export default function App() {
   const [invite, setInvite] = useState<Invite | null>(null);
   /** Address suggestions for the compose To field. */
   const [contactHits, setContactHits] = useState<Contact[]>([]);
+  /** Full address book, for the Contacts page. */
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  /** Local calendar events, for the Calendar page. */
+  const [events, setEvents] = useState<CalEvent[]>([]);
+  /** New-event form state on the Calendar page. */
+  const [evTitle, setEvTitle] = useState("");
+  const [evWhen, setEvWhen] = useState("");
+  const [evWhere, setEvWhere] = useState("");
+  const [calNote, setCalNote] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -449,6 +484,74 @@ export default function App() {
       setContactHits(data.contacts ?? []);
     } catch {
       setContactHits([]);
+    }
+  }
+
+  async function refreshContacts(): Promise<void> {
+    try {
+      const data = await api<{ contacts: Contact[] }>("/api/contacts");
+      setContacts(data.contacts ?? []);
+    } catch {
+      setContacts([]);
+    }
+  }
+
+  async function refreshCalendar(): Promise<void> {
+    try {
+      const data = await api<{ events: CalEvent[] }>("/api/calendar");
+      setEvents(data.events ?? []);
+    } catch {
+      setEvents([]);
+    }
+  }
+
+  /** Add an event from the Calendar page's own form. */
+  async function addEvent(): Promise<void> {
+    if (!evTitle.trim() || !evWhen) {
+      setCalNote("A title and a time, please.");
+      return;
+    }
+    try {
+      await api("/api/calendar", {
+        method: "POST",
+        body: JSON.stringify({
+          summary: evTitle.trim(),
+          // datetime-local gives local wall time; send it as an instant.
+          start: new Date(evWhen).toISOString(),
+          location: evWhere.trim() || undefined,
+        }),
+      });
+      setEvTitle("");
+      setEvWhen("");
+      setEvWhere("");
+      setCalNote(null);
+      await refreshCalendar();
+    } catch (e) {
+      setCalNote(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function removeEvent(id: string): Promise<void> {
+    try {
+      await api(`/api/calendar/${encodeURIComponent(id)}`, { method: "DELETE" });
+      await refreshCalendar();
+    } catch (e) {
+      setCalNote(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Save an invite found in mail into the local calendar. */
+  async function saveInviteToCalendar(): Promise<void> {
+    if (!invite) return;
+    try {
+      await api("/api/calendar", {
+        method: "POST",
+        body: JSON.stringify({ ...invite, messageId: selectedId ?? undefined }),
+      });
+      await refreshCalendar();
+      setSendNote("Added to your calendar.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -1036,6 +1139,9 @@ export default function App() {
               setShowFolders(false);
             }}
           >
+            <span className="fico" aria-hidden="true">
+              {FOLDER_ICONS[f.name] ?? "◇"}
+            </span>
             <span>{f.name}</span>
             <span className="counts">
               {f.unread > 0 ? <b>{f.unread}</b> : null}
@@ -1043,8 +1149,9 @@ export default function App() {
             </span>
           </button>
         ))}
-        {/* Outbox is local, not an IMAP folder — it only exists on this machine
-            until the queue drains, so it is listed separately. */}
+        {/* Local destinations — not IMAP folders. These live only on this
+            machine, so they are grouped below the mail folders. */}
+        <div className="nav-sep" />
         <button
           className={folder === "Outbox" ? "folder on" : "folder"}
           onClick={() => {
@@ -1055,8 +1162,43 @@ export default function App() {
             void refreshOutbox();
           }}
         >
+          <span className="fico" aria-hidden="true">
+            ↗
+          </span>
           <span>Outbox</span>
           <span className="counts">{outbox.length > 0 ? <b>{outbox.length}</b> : null}</span>
+        </button>
+        <button
+          className={folder === "__calendar" ? "folder on" : "folder"}
+          onClick={() => {
+            setFolder("__calendar");
+            setSelectedId(null);
+            setAgent(null);
+            setShowFolders(false);
+            void refreshCalendar();
+          }}
+        >
+          <span className="fico" aria-hidden="true">
+            ▦
+          </span>
+          <span>Calendar</span>
+          <span className="counts">{events.length > 0 ? <i>{events.length}</i> : null}</span>
+        </button>
+        <button
+          className={folder === "__contacts" ? "folder on" : "folder"}
+          onClick={() => {
+            setFolder("__contacts");
+            setSelectedId(null);
+            setAgent(null);
+            setShowFolders(false);
+            void refreshContacts();
+          }}
+        >
+          <span className="fico" aria-hidden="true">
+            ◍
+          </span>
+          <span>Contacts</span>
+          <span className="counts">{contacts.length > 0 ? <i>{contacts.length}</i> : null}</span>
         </button>
         <button
           className={folder === "__agent" ? "folder on" : "folder"}
@@ -1066,12 +1208,88 @@ export default function App() {
             setShowFolders(false);
           }}
         >
-          <span>✦ Assistant</span>
+          <span className="fico" aria-hidden="true">
+            ✦
+          </span>
+          <span>Assistant</span>
         </button>
       </aside>
 
       <section className="list">
-        {folder === "Outbox" ? (
+        {folder === "__calendar" ? (
+          <div className="calendar">
+            <form
+              className="cal-new"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void addEvent();
+              }}
+            >
+              <strong>New event</strong>
+              <input placeholder="What is it?" value={evTitle} onChange={(e) => setEvTitle(e.target.value)} />
+              <input type="datetime-local" value={evWhen} onChange={(e) => setEvWhen(e.target.value)} />
+              <input placeholder="Where (optional)" value={evWhere} onChange={(e) => setEvWhere(e.target.value)} />
+              <button type="submit">Add event</button>
+              {calNote ? <p className="note">{calNote}</p> : null}
+            </form>
+            {events.length === 0 ? (
+              <p className="empty">
+                Nothing scheduled. Add something above, or open a mail invite and save it here.
+              </p>
+            ) : (
+              events.map((ev) => (
+                <div className="cal-row" key={ev.id}>
+                  <span className="cal-when">
+                    <b>{new Date(ev.start).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</b>
+                    <i>
+                      {ev.allDay
+                        ? "all day"
+                        : new Date(ev.start).toLocaleTimeString(undefined, { timeStyle: "short" })}
+                    </i>
+                  </span>
+                  <span className="cal-body">
+                    <strong>{ev.summary}</strong>
+                    {ev.location ? <span className="cal-where">📍 {ev.location}</span> : null}
+                    {ev.organizer ? <span className="cal-where">{ev.organizer}</span> : null}
+                  </span>
+                  <button className="subtle-danger" onClick={() => void removeEvent(ev.id)}>
+                    Remove
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        ) : folder === "__contacts" ? (
+          <div className="contacts-page">
+            <p className="hint">
+              Gathered from mail you already have — nothing was uploaded or synced. People you write to
+              rank highest.
+            </p>
+            {contacts.length === 0 ? (
+              <p className="empty">No contacts yet. Sync some mail first.</p>
+            ) : (
+              contacts.map((c) => (
+                <div className="contact-row" key={c.address}>
+                  <span className="avatar" aria-hidden="true">
+                    {(c.name || c.address).trim().charAt(0).toUpperCase()}
+                  </span>
+                  <span className="contact-id">
+                    <strong>{c.name || c.address.split("@")[0]}</strong>
+                    <span>{c.address}</span>
+                  </span>
+                  <button
+                    onClick={() => {
+                      setComposeTo(c.address);
+                      setComposing(true);
+                    }}
+                  >
+                    Write
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        ) : folder === "Outbox" ? (
           <div className="outbox">
             {outbox.length === 0 ? (
               <p className="empty">
@@ -1204,9 +1422,14 @@ export default function App() {
                   </span>
                 ) : null}
                 {invite.method !== "CANCEL" ? (
-                  <button className="inv-add" onClick={() => void addToCalendar()}>
-                    Add to calendar
-                  </button>
+                  <span className="inv-actions">
+                    <button className="inv-add" onClick={() => void saveInviteToCalendar()}>
+                      Add to Aether calendar
+                    </button>
+                    <button className="inv-alt" onClick={() => void addToCalendar()}>
+                      Download .ics
+                    </button>
+                  </span>
                 ) : null}
               </div>
             ) : null}

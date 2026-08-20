@@ -1,7 +1,7 @@
 export const THEMES = [
-  { id: "filament", label: "Filament", note: "Near-black, one amber line." },
-  { id: "retro", label: "Retro", note: "Night-olive + copper. The original operate skin." },
-  { id: "modern", label: "Modern", note: "Slate + steel, denser chrome." },
+  { id: "modern", label: "Modern", note: "Slate and steel. Soft depth, roomy rows. The default." },
+  { id: "filament", label: "Filament", note: "Near-black with a single amber line. Focused." },
+  { id: "retro", label: "Classic", note: "Night-olive and copper. The old-school terminal skin." },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]["id"];

@@ -34,6 +34,7 @@ import { SignatureBook, applySignature } from "./signatures.js";
 import { harvestContacts, suggestContacts } from "./contacts.js";
 import { groupIntoThreads } from "./threading.js";
 import { parseJsonBody, asString, asStringArray } from "./reqbody.js";
+import { CalendarStore } from "./calendar.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -65,6 +66,7 @@ const templates = new TemplateBook(path.join(here, "data/templates.json"));
 const inspectPrefs = new InspectBook(path.join(here, "data/inspect.json"));
 const outbox = Outbox.openFile(path.join(here, "data/outbox.json"));
 const signatures = SignatureBook.openFile(path.join(here, "data/signatures.json"));
+const calendar = CalendarStore.openFile(path.join(here, "data/calendar.json"));
 const chat = new ChatThread();
 const metaPath = path.join(here, "data/meta.json");
 type MetaFile = { lastFetchAt?: string; activeAccountId?: string };
@@ -595,6 +597,42 @@ const server = http.createServer(async (req, res) => {
         me,
       );
       return json(res, 200, { contacts: q ? suggestContacts(book, q) : book.slice(0, 50) }, origin);
+    }
+
+    // Calendar: a real local calendar, not just invite detection.
+    if (req.method === "GET" && url.pathname === "/api/calendar") {
+      const all = url.searchParams.get("all") === "1";
+      return json(res, 200, { events: all ? calendar.list() : calendar.upcoming() }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/calendar") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      try {
+        const event = calendar.add({
+          summary: asString(body.summary, "", 500),
+          description: asString(body.description, "", 5000) || undefined,
+          location: asString(body.location, "", 500) || undefined,
+          organizer: asString(body.organizer, "", 320) || undefined,
+          attendees: asStringArray(body.attendees, 200),
+          start: asString(body.start),
+          end: asString(body.end) || null,
+          allDay: body.allDay === true,
+          uid: asString(body.uid, "", 200) || undefined,
+          messageId: asString(body.messageId, "", 200) || undefined,
+        });
+        audit.append({ actor: "user", action: "calendar.add", detail: event.summary.slice(0, 80) });
+        return json(res, 201, { event }, origin);
+      } catch (e) {
+        return json(res, 400, { error: "bad_event", message: e instanceof Error ? e.message : String(e) }, origin);
+      }
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/calendar/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/calendar/".length));
+      const ok = calendar.remove(id);
+      return json(res, ok ? 200 : 404, { removed: ok }, origin);
     }
 
     // Per-account signature.
