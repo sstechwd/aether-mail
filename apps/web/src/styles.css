@@ -731,16 +731,38 @@ textarea:focus-visible {
   text-wrap: pretty;
 }
 
+/*
+ * The message body.
+ *
+ * This used to be capped at 46rem wide and 55vh tall, which made every HTML
+ * newsletter a small boxed-in window you had to scroll inside while the rest
+ * of the pane sat empty. Real mail is designed for 600-800px but plenty of it
+ * is wider, and a reading pane should show the message, not a porthole onto it.
+ *
+ * Now it fills the pane and the height is driven by the content (see the
+ * auto-resize in App.tsx), so the message scrolls with the pane like Outlook
+ * rather than inside a nested scrollbar.
+ */
 .mail-frame {
   display: block;
   width: 100%;
-  max-width: 46rem;
-  min-height: 280px;
-  height: 55vh;
-  margin: 14px 0 0;
-  border: 1px solid var(--line);
+  min-height: 420px;
+  margin: 16px 0 0;
+  border: 0;
   border-radius: var(--radius);
-  background: #f4f1ea;
+  background: #ffffff;
+}
+
+/* Plain-text mail: readable measure, wraps instead of running off the edge. */
+.body {
+  max-width: 68ch;
+  margin: 14px 0 0;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* ——— Agent skill strip (read pane) ——— */
@@ -2328,3 +2350,174 @@ textarea:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ===== Calendar: month / week / day ==================================== */
+.cal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cal-title { flex: 1; font-size: 15px; color: var(--ink); }
+
+.cal-nav, .cal-today, .cal-views button {
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
+}
+
+.cal-nav { min-width: 30px; font-size: 15px; line-height: 1; }
+.cal-nav:hover, .cal-today:hover, .cal-views button:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.cal-views { display: inline-flex; gap: 4px; }
+.cal-views button.on { background: var(--accent-dim); border-color: var(--accent); color: var(--ink); }
+
+.cal-month {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  padding: 8px;
+}
+
+.cal-dow {
+  padding: 6px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.cal-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 78px;
+  padding: 5px 6px;
+  background: var(--panel);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background-color 140ms ease-out, border-color 140ms ease-out, transform 140ms ease-out;
+}
+
+.cal-cell:hover { background: var(--hover); transform: translateY(-1px); }
+.cal-cell.dim { opacity: 0.38; }
+.cal-cell.today { border-color: var(--accent); }
+.cal-cell.picked { background: var(--select); border-color: var(--accent); }
+
+.cal-num { font-size: 12px; color: var(--ink-soft); }
+.cal-cell.today .cal-num { color: var(--accent); font-weight: 700; }
+
+.cal-chip {
+  overflow: hidden;
+  padding: 2px 5px;
+  background: var(--accent-dim);
+  border-left: 2px solid var(--accent);
+  border-radius: 3px;
+  color: var(--ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-more { color: var(--muted); font-size: 10px; }
+
+.cal-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 8px; }
+.cal-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 220px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background-color 140ms ease-out, border-color 140ms ease-out;
+}
+.cal-col:hover { background: var(--hover); }
+.cal-col.today { border-color: var(--accent); }
+.cal-col.picked { background: var(--select); border-color: var(--accent); }
+.cal-colhead { display: flex; flex-direction: column; align-items: center; gap: 1px; margin-bottom: 4px; }
+.cal-colhead i { color: var(--muted); font-size: 10px; font-style: normal; text-transform: uppercase; }
+.cal-colhead b { color: var(--ink); font-size: 15px; }
+
+.cal-day { padding: 8px; }
+
+.cal-agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+.cal-agenda > strong { margin-bottom: 6px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.cal-row {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background-color 140ms ease-out, transform 140ms ease-out;
+}
+.cal-row:hover { background: var(--hover); transform: translateX(2px); }
+.cal-row.on { background: var(--select); border-color: var(--accent); }
+
+/* Calendar detail pane (3rd pane) */
+.cal-detail { max-width: 44rem; }
+.cal-detail h1 { margin: 0 0 10px; font-size: 21px; }
+.cal-detail-when { margin: 0 0 14px; color: var(--accent-soft); font-size: 14px; }
+.cal-desc { margin: 14px 0; color: var(--ink-soft); line-height: 1.6; white-space: pre-wrap; }
+.cal-detail .cal-new { gap: 12px; }
+.cal-detail .cal-new label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: 12px; }
+
+/* ===== Contacts toolbar =============================================== */
+.contacts-bar { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.contacts-bar input {
+  flex: 1;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+}
+.contacts-bar input:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.contacts-bar button {
+  padding: 7px 12px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.contacts-bar button.on { background: var(--accent-dim); border-color: var(--accent); color: var(--ink); }
+.contact-actions { display: flex; gap: 6px; }

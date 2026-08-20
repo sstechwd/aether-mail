@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { apiUrl } from "./apibase.js";
+import {
+  monthGrid,
+  weekDays,
+  sameDay,
+  shift,
+  viewLabel,
+  dayLabel,
+  type CalView,
+} from "./calgrid.js";
 import Settings from "./Settings";
 import AgentChat from "./AgentChat";
 import Templates from "./Templates";
@@ -110,6 +119,39 @@ function inviteWhen(ev: Invite): string {
   const end = new Date(ev.end);
   if (Number.isNaN(end.getTime())) return `${date} at ${from}`;
   return `${date} · ${from} – ${end.toLocaleTimeString(undefined, { timeStyle: "short" })}`;
+}
+
+/**
+ * Grow a message iframe to fit its content.
+ *
+ * The frame is sandboxed with no same-origin, so the page inside cannot tell us
+ * how tall it is and we cannot read its document in the normal case. Where the
+ * browser does allow the measurement we use it; otherwise we fall back to a
+ * generous height so a long newsletter is not trapped in a small box.
+ *
+ * Images load after the document fires load, so we re-measure a couple of times
+ * rather than trusting the first number.
+ */
+function fitMailFrame(frame: HTMLIFrameElement): void {
+  const measure = (): void => {
+    try {
+      const doc = frame.contentDocument;
+      if (!doc?.body) return;
+      const height = Math.max(
+        doc.body.scrollHeight,
+        doc.documentElement?.scrollHeight ?? 0,
+        420,
+      );
+      // Cap it: a runaway page should not create a mile-long pane.
+      frame.style.height = `${Math.min(height + 24, 20000)}px`;
+    } catch {
+      // Cross-origin measurement blocked — leave the CSS min-height in place.
+    }
+  };
+  measure();
+  // Re-measure as images arrive and late layout settles.
+  window.setTimeout(measure, 120);
+  window.setTimeout(measure, 600);
 }
 
 /** Bytes -> what a person reads next to a filename. */
@@ -226,6 +268,16 @@ export default function App() {
   const [evWhen, setEvWhen] = useState("");
   const [evWhere, setEvWhere] = useState("");
   const [calNote, setCalNote] = useState<string | null>(null);
+  /** Which calendar view is showing, and the date it is centred on. */
+  const [calView, setCalView] = useState<CalView>("month");
+  const [calAnchor, setCalAnchor] = useState<Date>(() => new Date());
+  /** The day the user clicked — drives the agenda and the detail pane. */
+  const [calPicked, setCalPicked] = useState<Date>(() => new Date());
+  /** Event selected for the detail pane. */
+  const [calSelected, setCalSelected] = useState<string | null>(null);
+  /** Contacts page filters. People-only hides newsletters and no-reply senders. */
+  const [contactQuery, setContactQuery] = useState("");
+  const [contactsPeopleOnly, setContactsPeopleOnly] = useState(true);
   const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -487,6 +539,53 @@ export default function App() {
     }
   }
 
+  /** Remove a contact. Stays removed across syncs. */
+  async function removeContact(address: string): Promise<void> {
+    try {
+      await api(`/api/contacts/${encodeURIComponent(address)}`, { method: "DELETE" });
+      setContacts((cs) => cs.filter((c) => c.address !== address));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /**
+   * Open the current message in its own window, the way Outlook does.
+   *
+   * The popup gets the already-sanitized HTML we render in the reading pane —
+   * it never re-fetches and never gets the raw message, so the same rules
+   * apply: no scripts, no remote images unless the user already allowed them.
+   */
+  function openMessageWindow(): void {
+    if (!selected) return;
+    const win = window.open("", "_blank", "width=900,height=760,menubar=no,toolbar=no");
+    if (!win) {
+      setError("Your window manager blocked the popup.");
+      return;
+    }
+    const esc = (v: string): string =>
+      v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const head = `<style>
+      body{margin:0;font:14px/1.6 system-ui,-apple-system,Segoe UI,sans-serif;background:#fff;color:#111}
+      header{padding:16px 20px;border-bottom:1px solid #e5e5e5}
+      h1{margin:0 0 6px;font-size:19px}
+      .meta{color:#666;font-size:13px}
+      iframe{display:block;width:100%;border:0;min-height:70vh}
+      pre{margin:0;padding:16px 20px;white-space:pre-wrap;font:inherit}
+    </style>`;
+    const header = `<header><h1>${esc(selected.subject || "(no subject)")}</h1>
+      <div class="meta">${esc(selected.from)} · ${esc(formatWhen(selected.date))}</div></header>`;
+    const bodyHtml = mailHtml
+      ? `<iframe sandbox="" referrerpolicy="no-referrer" srcdoc="${mailHtml.replace(/"/g, "&quot;")}"></iframe>`
+      : `<pre>${esc(selected.body ?? "")}</pre>`;
+    win.document.write(
+      `<!doctype html><html><head><meta charset="utf-8"><title>${esc(
+        selected.subject || "Message",
+      )}</title>${head}</head><body>${header}${bodyHtml}</body></html>`,
+    );
+    win.document.close();
+  }
+
   async function refreshContacts(): Promise<void> {
     try {
       const data = await api<{ contacts: Contact[] }>("/api/contacts");
@@ -505,19 +604,23 @@ export default function App() {
     }
   }
 
-  /** Add an event from the Calendar page's own form. */
+  /** Add an event on the day currently picked in the grid. */
   async function addEvent(): Promise<void> {
-    if (!evTitle.trim() || !evWhen) {
-      setCalNote("A title and a time, please.");
+    if (!evTitle.trim()) {
+      setCalNote("Give it a title.");
       return;
     }
     try {
+      // The grid supplies the date, the form supplies the time. Default to
+      // 9am so a title-only event still lands somewhere sensible.
+      const [hh, mm] = (evWhen || "09:00").split(":").map((n) => Number(n) || 0);
+      const when = new Date(calPicked);
+      when.setHours(hh, mm, 0, 0);
       await api("/api/calendar", {
         method: "POST",
         body: JSON.stringify({
           summary: evTitle.trim(),
-          // datetime-local gives local wall time; send it as an instant.
-          start: new Date(evWhen).toISOString(),
+          start: when.toISOString(),
           location: evWhere.trim() || undefined,
         }),
       });
@@ -1218,57 +1321,187 @@ export default function App() {
       <section className="list">
         {folder === "__calendar" ? (
           <div className="calendar">
-            <form
-              className="cal-new"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void addEvent();
-              }}
-            >
-              <strong>New event</strong>
-              <input placeholder="What is it?" value={evTitle} onChange={(e) => setEvTitle(e.target.value)} />
-              <input type="datetime-local" value={evWhen} onChange={(e) => setEvWhen(e.target.value)} />
-              <input placeholder="Where (optional)" value={evWhere} onChange={(e) => setEvWhere(e.target.value)} />
-              <button type="submit">Add event</button>
-              {calNote ? <p className="note">{calNote}</p> : null}
-            </form>
-            {events.length === 0 ? (
-              <p className="empty">
-                Nothing scheduled. Add something above, or open a mail invite and save it here.
-              </p>
-            ) : (
-              events.map((ev) => (
-                <div className="cal-row" key={ev.id}>
-                  <span className="cal-when">
-                    <b>{new Date(ev.start).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</b>
-                    <i>
-                      {ev.allDay
-                        ? "all day"
-                        : new Date(ev.start).toLocaleTimeString(undefined, { timeStyle: "short" })}
-                    </i>
-                  </span>
-                  <span className="cal-body">
-                    <strong>{ev.summary}</strong>
-                    {ev.location ? <span className="cal-where">📍 {ev.location}</span> : null}
-                    {ev.organizer ? <span className="cal-where">{ev.organizer}</span> : null}
-                  </span>
-                  <button className="subtle-danger" onClick={() => void removeEvent(ev.id)}>
-                    Remove
+            <div className="cal-bar">
+              <button className="cal-nav" onClick={() => setCalAnchor((d) => shift(calView, d, -1))}>
+                ‹
+              </button>
+              <strong className="cal-title">{viewLabel(calView, calAnchor)}</strong>
+              <button className="cal-nav" onClick={() => setCalAnchor((d) => shift(calView, d, 1))}>
+                ›
+              </button>
+              <button className="cal-today" onClick={() => setCalAnchor(new Date())}>
+                Today
+              </button>
+              <span className="cal-views">
+                {(["month", "week", "day"] as CalView[]).map((v) => (
+                  <button
+                    key={v}
+                    className={calView === v ? "on" : ""}
+                    onClick={() => setCalView(v)}
+                  >
+                    {v[0].toUpperCase() + v.slice(1)}
                   </button>
-                </div>
-              ))
+                ))}
+              </span>
+            </div>
+
+            {calView === "month" ? (
+              <div className="cal-month">
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                  <span className="cal-dow" key={d}>
+                    {d}
+                  </span>
+                ))}
+                {monthGrid(calAnchor).map((cell) => {
+                  const dayEvents = events.filter((e) => sameDay(new Date(e.start), cell.date));
+                  const isToday = sameDay(cell.date, new Date());
+                  const isPicked = sameDay(cell.date, calPicked);
+                  return (
+                    <button
+                      key={cell.date.toISOString()}
+                      className={`cal-cell${cell.inMonth ? "" : " dim"}${isToday ? " today" : ""}${
+                        isPicked ? " picked" : ""
+                      }`}
+                      onClick={() => {
+                        setCalPicked(cell.date);
+                        setCalAnchor(cell.date);
+                      }}
+                    >
+                      <span className="cal-num">{cell.date.getDate()}</span>
+                      {dayEvents.slice(0, 3).map((e) => (
+                        <span className="cal-chip" key={e.id} title={e.summary}>
+                          {e.summary}
+                        </span>
+                      ))}
+                      {dayEvents.length > 3 ? (
+                        <span className="cal-more">+{dayEvents.length - 3} more</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : calView === "week" ? (
+              <div className="cal-week">
+                {weekDays(calAnchor).map((d) => {
+                  const dayEvents = events.filter((e) => sameDay(new Date(e.start), d));
+                  return (
+                    <button
+                      key={d.toISOString()}
+                      className={`cal-col${sameDay(d, new Date()) ? " today" : ""}${
+                        sameDay(d, calPicked) ? " picked" : ""
+                      }`}
+                      onClick={() => setCalPicked(d)}
+                    >
+                      <span className="cal-colhead">
+                        <i>{d.toLocaleDateString(undefined, { weekday: "short" })}</i>
+                        <b>{d.getDate()}</b>
+                      </span>
+                      {dayEvents.map((e) => (
+                        <span className="cal-chip" key={e.id}>
+                          {e.allDay
+                            ? "all day"
+                            : new Date(e.start).toLocaleTimeString(undefined, { timeStyle: "short" })}{" "}
+                          {e.summary}
+                        </span>
+                      ))}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="cal-day">
+                {events.filter((e) => sameDay(new Date(e.start), calAnchor)).length === 0 ? (
+                  <p className="empty">Nothing on {dayLabel(calAnchor)}.</p>
+                ) : (
+                  events
+                    .filter((e) => sameDay(new Date(e.start), calAnchor))
+                    .map((e) => (
+                      <button
+                        key={e.id}
+                        className={`cal-row${calSelected === e.id ? " on" : ""}`}
+                        onClick={() => setCalSelected(e.id)}
+                      >
+                        <span className="cal-when">
+                          <b>
+                            {e.allDay
+                              ? "All day"
+                              : new Date(e.start).toLocaleTimeString(undefined, { timeStyle: "short" })}
+                          </b>
+                        </span>
+                        <span className="cal-body">
+                          <strong>{e.summary}</strong>
+                          {e.location ? <span className="cal-where">📍 {e.location}</span> : null}
+                        </span>
+                      </button>
+                    ))
+                )}
+              </div>
             )}
+
+            {/* Agenda for the picked day, under the grid. */}
+            <div className="cal-agenda">
+              <strong>{dayLabel(calPicked)}</strong>
+              {events.filter((e) => sameDay(new Date(e.start), calPicked)).length === 0 ? (
+                <p className="hint">Nothing scheduled. Click Add event in the right pane.</p>
+              ) : (
+                events
+                  .filter((e) => sameDay(new Date(e.start), calPicked))
+                  .map((e) => (
+                    <button
+                      key={e.id}
+                      className={`cal-row${calSelected === e.id ? " on" : ""}`}
+                      onClick={() => setCalSelected(e.id)}
+                    >
+                      <span className="cal-when">
+                        <b>
+                          {e.allDay
+                            ? "All day"
+                            : new Date(e.start).toLocaleTimeString(undefined, { timeStyle: "short" })}
+                        </b>
+                      </span>
+                      <span className="cal-body">
+                        <strong>{e.summary}</strong>
+                        {e.location ? <span className="cal-where">📍 {e.location}</span> : null}
+                      </span>
+                    </button>
+                  ))
+              )}
+            </div>
           </div>
         ) : folder === "__contacts" ? (
           <div className="contacts-page">
-            <p className="hint">
-              Gathered from mail you already have — nothing was uploaded or synced. People you write to
-              rank highest.
-            </p>
-            {contacts.length === 0 ? (
-              <p className="empty">No contacts yet. Sync some mail first.</p>
-            ) : (
-              contacts.map((c) => (
+            <div className="contacts-bar">
+              <input
+                placeholder="Search contacts"
+                value={contactQuery}
+                onChange={(e) => setContactQuery(e.target.value)}
+              />
+              <button
+                className={contactsPeopleOnly ? "on" : ""}
+                onClick={() => setContactsPeopleOnly((v) => !v)}
+                title="Hide newsletters and no-reply senders"
+              >
+                {contactsPeopleOnly ? "People" : "Everyone"}
+              </button>
+            </div>
+            {(() => {
+              const q = contactQuery.trim().toLowerCase();
+              const shown = contacts
+                .filter((c) => (contactsPeopleOnly ? c.score > 0 : true))
+                .filter(
+                  (c) =>
+                    !q || c.address.includes(q) || (c.name ?? "").toLowerCase().includes(q),
+                );
+              if (shown.length === 0) {
+                return (
+                  <p className="empty">
+                    {contacts.length === 0
+                      ? "No contacts yet. Sync some mail first."
+                      : "Nothing matches. Try Everyone, or a different search."}
+                  </p>
+                );
+              }
+              return shown.map((c) => (
                 <div className="contact-row" key={c.address}>
                   <span className="avatar" aria-hidden="true">
                     {(c.name || c.address).trim().charAt(0).toUpperCase()}
@@ -1277,17 +1510,26 @@ export default function App() {
                     <strong>{c.name || c.address.split("@")[0]}</strong>
                     <span>{c.address}</span>
                   </span>
-                  <button
-                    onClick={() => {
-                      setComposeTo(c.address);
-                      setComposing(true);
-                    }}
-                  >
-                    Write
-                  </button>
+                  <span className="contact-actions">
+                    <button
+                      onClick={() => {
+                        setComposeTo(c.address);
+                        setComposing(true);
+                      }}
+                    >
+                      Write
+                    </button>
+                    <button
+                      className="subtle-danger"
+                      title="Remove from contacts"
+                      onClick={() => void removeContact(c.address)}
+                    >
+                      ✕
+                    </button>
+                  </span>
                 </div>
-              ))
-            )}
+              ));
+            })()}
           </div>
         ) : folder === "Outbox" ? (
           <div className="outbox">
@@ -1368,7 +1610,83 @@ export default function App() {
       </section>
 
       <main className="read">
-        {folder === "__agent" ? (
+        {folder === "__calendar" ? (
+          <div className="cal-detail">
+            {(() => {
+              const ev = events.find((e) => e.id === calSelected);
+              if (ev) {
+                return (
+                  <>
+                    <h1>{ev.summary}</h1>
+                    <p className="cal-detail-when">
+                      {new Date(ev.start).toLocaleDateString(undefined, { dateStyle: "full" })}
+                      <br />
+                      {ev.allDay
+                        ? "All day"
+                        : `${new Date(ev.start).toLocaleTimeString(undefined, { timeStyle: "short" })}${
+                            ev.end
+                              ? ` – ${new Date(ev.end).toLocaleTimeString(undefined, { timeStyle: "short" })}`
+                              : ""
+                          }`}
+                    </p>
+                    {ev.location ? <p className="hint">📍 {ev.location}</p> : null}
+                    {ev.organizer ? <p className="hint">Organizer · {ev.organizer}</p> : null}
+                    {ev.attendees && ev.attendees.length > 0 ? (
+                      <p className="hint">{ev.attendees.join(", ")}</p>
+                    ) : null}
+                    {ev.description ? <p className="cal-desc">{ev.description}</p> : null}
+                    <div className="msg-actions">
+                      <button
+                        className="subtle-danger"
+                        onClick={() => {
+                          setCalSelected(null);
+                          void removeEvent(ev.id);
+                        }}
+                      >
+                        🗑 Delete event
+                      </button>
+                      <button onClick={() => setCalSelected(null)}>Close</button>
+                    </div>
+                  </>
+                );
+              }
+              return (
+                <form
+                  className="cal-new"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void addEvent();
+                  }}
+                >
+                  <h1>New event</h1>
+                  <p className="hint">On {dayLabel(calPicked)}. Pick another day in the grid to change it.</p>
+                  <label>
+                    What
+                    <input
+                      placeholder="Design review"
+                      value={evTitle}
+                      onChange={(e) => setEvTitle(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    When
+                    <input type="time" value={evWhen} onChange={(e) => setEvWhen(e.target.value)} />
+                  </label>
+                  <label>
+                    Where
+                    <input
+                      placeholder="Optional"
+                      value={evWhere}
+                      onChange={(e) => setEvWhere(e.target.value)}
+                    />
+                  </label>
+                  <button type="submit">Add event</button>
+                  {calNote ? <p className="note">{calNote}</p> : null}
+                </form>
+              );
+            })()}
+          </div>
+        ) : folder === "__agent" ? (
           <div className="agent-page">
             <h1>✦ Assistant</h1>
             <p className="hint">
@@ -1399,6 +1717,9 @@ export default function App() {
                 <b>Date</b> {formatWhen(selected.date)}
               </p>
               <div className="msg-actions">
+                <button onClick={() => openMessageWindow()} title="Open in a separate window">
+                  ⧉ Pop out
+                </button>
                 <button onClick={() => void startCompose("reply")}>↩ Reply</button>
                 <button onClick={() => void startCompose("all")}>↩↩ Reply all</button>
                 <button onClick={() => void startCompose("forward")}>↪ Forward</button>
@@ -1516,9 +1837,13 @@ export default function App() {
               <iframe
                 className="mail-frame"
                 title="Message"
+                // Locked down: no scripts, no forms, no same-origin. Mail is
+                // hostile input. This is why the height has to be measured
+                // from out here rather than reported by the page itself.
                 sandbox=""
                 referrerPolicy="no-referrer"
                 srcDoc={mailHtml}
+                onLoad={(e) => fitMailFrame(e.currentTarget)}
               />
             ) : (
               <pre className="body">{selected.body}</pre>

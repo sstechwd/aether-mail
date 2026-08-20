@@ -67,6 +67,24 @@ const inspectPrefs = new InspectBook(path.join(here, "data/inspect.json"));
 const outbox = Outbox.openFile(path.join(here, "data/outbox.json"));
 const signatures = SignatureBook.openFile(path.join(here, "data/signatures.json"));
 const calendar = CalendarStore.openFile(path.join(here, "data/calendar.json"));
+/**
+ * Addresses the user removed from Contacts. Kept separately from the mail
+ * store: the message they came from is still there, so without this list a
+ * removed contact would reappear on the next sync.
+ */
+const hiddenContactsPath = path.join(here, "data/hidden-contacts.json");
+function readHiddenContacts(): string[] {
+  try {
+    const rows = JSON.parse(fs.readFileSync(hiddenContactsPath, "utf8")) as string[];
+    return Array.isArray(rows) ? rows.filter((r) => typeof r === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function writeHiddenContacts(rows: string[]): void {
+  fs.mkdirSync(path.dirname(hiddenContactsPath), { recursive: true });
+  fs.writeFileSync(hiddenContactsPath, JSON.stringify([...new Set(rows)]), "utf8");
+}
 const chat = new ChatThread();
 const metaPath = path.join(here, "data/meta.json");
 type MetaFile = { lastFetchAt?: string; activeAccountId?: string };
@@ -595,8 +613,26 @@ const server = http.createServer(async (req, res) => {
           date: m.date,
         })),
         me,
+        readHiddenContacts(),
       );
-      return json(res, 200, { contacts: q ? suggestContacts(book, q) : book.slice(0, 50) }, origin);
+      return json(res, 200, { contacts: q ? suggestContacts(book, q) : book.slice(0, 200) }, origin);
+    }
+
+    // Remove a contact. The mail it came from stays; the address is remembered
+    // as hidden so it does not come back on the next sync.
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/contacts/")) {
+      const address = decodeURIComponent(url.pathname.slice("/api/contacts/".length))
+        .trim()
+        .toLowerCase();
+      if (!address.includes("@")) return json(res, 400, { error: "bad_address" }, origin);
+      writeHiddenContacts([...readHiddenContacts(), address]);
+      return json(res, 200, { removed: address }, origin);
+    }
+
+    // Bring every removed contact back.
+    if (req.method === "POST" && url.pathname === "/api/contacts/restore") {
+      writeHiddenContacts([]);
+      return json(res, 200, { restored: true }, origin);
     }
 
     // Calendar: a real local calendar, not just invite detection.

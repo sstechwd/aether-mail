@@ -34,9 +34,24 @@ function splitAddress(raw: string): { name?: string; address: string } | null {
   return bare.includes("@") ? { address: bare } : null;
 }
 
-/** Addresses nobody wants suggested when composing. */
+/**
+ * Addresses nobody wants suggested when composing.
+ *
+ * Newsletters and transactional senders dominate a real mailbox by volume, so
+ * without this the address book is a wall of no-reply robots.
+ */
 function isNoReply(address: string): boolean {
-  return /^(no-?reply|do-?not-?reply|bounce|mailer-daemon|postmaster|notifications?)@/i.test(address);
+  return /^(no-?reply|do-?not-?reply|bounce|mailer-daemon|postmaster|notifications?|news|newsletter|info|support|alerts?|updates?|mail|email|auto|robot|bot|donotreply)[.@+-]/i.test(
+    address,
+  );
+}
+
+/** Bulk senders give themselves away in the domain too. */
+function isBulkDomain(address: string): boolean {
+  const domain = address.split("@")[1] ?? "";
+  return /^(mailer|email|em|mail|news|newsletter|notifications?|updates?|reply|smtp|mktg|marketing|campaign|send|sendgrid|mailgun|mandrill)[.-]/i.test(
+    domain,
+  );
 }
 
 /**
@@ -45,10 +60,19 @@ function isNoReply(address: string): boolean {
  * Scoring is deliberately simple and explainable:
  *   +3  you addressed them (appears in To of a message you sent)
  *   +1  they wrote to you
- *   -2  the address looks automated
+ *   -4  the address or its domain looks automated
+ *
+ * `hidden` is the set of addresses the user removed. They stay removed even
+ * though the mail they came from is still in the store — otherwise "remove"
+ * would undo itself on the next sync.
  */
-export function harvestContacts(messages: Sourced[], me: string): Contact[] {
+export function harvestContacts(
+  messages: Sourced[],
+  me: string,
+  hidden: string[] = [],
+): Contact[] {
   const mine = (me ?? "").trim().toLowerCase();
+  const hiddenSet = new Set(hidden.map((h) => h.trim().toLowerCase()));
   const byAddress = new Map<string, Contact>();
 
   const add = (raw: string | undefined, weight: number): void => {
@@ -56,16 +80,25 @@ export function harvestContacts(messages: Sourced[], me: string): Contact[] {
       const parsed = splitAddress(piece);
       if (!parsed) continue;
       if (parsed.address === mine) continue;
+      if (hiddenSet.has(parsed.address)) continue;
+
+      // Automated senders are pinned negative and never accumulate.
+      //
+      // A one-time penalty does not work: a newsletter that mails you 34 times
+      // earns +34 and outranks every human you actually know. Volume is
+      // exactly what a bulk sender has most of, so it must not count.
+      const automated = isNoReply(parsed.address) || isBulkDomain(parsed.address);
+
       const existing = byAddress.get(parsed.address);
       if (existing) {
-        existing.score += weight;
+        if (!automated) existing.score += weight;
         // Keep the first real display name we saw.
         if (!existing.name && parsed.name) existing.name = parsed.name;
       } else {
         byAddress.set(parsed.address, {
           address: parsed.address,
           name: parsed.name,
-          score: weight + (isNoReply(parsed.address) ? -2 : 0),
+          score: automated ? -1 : weight,
         });
       }
     }

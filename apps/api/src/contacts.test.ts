@@ -53,6 +53,30 @@ describe("harvestContacts", () => {
     expect(found.find((c) => c.address === "team@gog.example")?.name).toBe("GOG.com Team");
   });
 
+  it("keeps a bulk sender below a real person no matter how much it mails you", () => {
+    // Real case from the live mailbox: Humble Bundle sent 34 newsletters and
+    // outranked every actual human. A one-time penalty cannot survive +1 per
+    // message, so automated senders must not accumulate score at all.
+    const rows = [
+      ...Array.from({ length: 34 }, () => ({
+        from: "Humble Bundle <contact@mailer.humblebundle.com>",
+        to: "me@example.com",
+        folder: "INBOX",
+        date: "2026-08-18T10:00:00Z",
+      })),
+      { from: "Ana Diaz <ana@example.com>", to: "me@example.com", folder: "INBOX", date: "2026-08-19T10:00:00Z" },
+    ];
+    const found = harvestContacts(rows, "me@example.com");
+    const ana = found.findIndex((c) => c.address === "ana@example.com");
+    const bulk = found.findIndex((c) => c.address === "contact@mailer.humblebundle.com");
+    expect(ana).toBeLessThan(bulk);
+  });
+
+  it("hides addresses the user removed", () => {
+    const found = harvestContacts(MESSAGES, "me@example.com", ["priya@example.com"]);
+    expect(found.map((c) => c.address)).not.toContain("priya@example.com");
+  });
+
   it("does not crash on malformed headers", () => {
     expect(() => harvestContacts([{ from: "", to: "", folder: "INBOX", date: "" }], "me@example.com")).not.toThrow();
   });
