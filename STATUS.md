@@ -19,6 +19,13 @@ Still want the dev loop? `scripts\start-mvp.bat` → http://127.0.0.1:5173/
 
 ## What works
 
+- **Folders** — INBOX, Sent, Drafts, Trash, Spam sync from your real mailbox with live counts.
+- **Outbox + Send later** — pick a date/time in compose and the mail waits in the Outbox.
+  It goes out even if you close the app. Cancel or retry anything queued.
+- **Assistant** — click "✦ Assistant" in the sidebar to chat without opening a message.
+  It still cannot send or delete; that is always your click.
+
+
 3-pane client, fixture + real Gmail/IMAP accounts (isolated, switchable). Fetch pulls the newest 40 messages,
 sorted correctly, HTML rendered in a sandboxed iframe (remote images blocked until you click Load).
 Header inspect (SPF/DKIM/From-vs-Return-Path) auto-opens on suspect mail. Spoken workflows compile locally

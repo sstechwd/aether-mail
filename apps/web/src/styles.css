@@ -560,24 +560,60 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-areas: "from when" "subj subj" "peek peek";
-  gap: 1px 8px;
-  padding: 6px 10px 6px 20px;
+  gap: 2px 10px;
+  padding: 9px 12px 10px 22px;
   position: relative;
+  isolation: isolate;
   background: transparent;
   border: 0;
   border-bottom: 1px solid var(--line);
   color: var(--ink-soft);
   text-align: left;
   cursor: pointer;
-  min-height: 44px;
+  min-height: 54px;
+  /* transform/opacity/colour only — never geometry. 100+ rows stay smooth. */
+  transition:
+    background-color var(--t-base) var(--curve),
+    color var(--t-base) var(--curve),
+    box-shadow var(--t-base) var(--curve);
 }
 
-.row:hover { background: var(--hover); }
+/* Selection wash glides in from the rail instead of snapping on. */
+.row::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-8px);
+  background: linear-gradient(90deg, var(--select-wash) 0%, transparent 68%);
+  transition:
+    opacity var(--t-base) var(--curve),
+    transform var(--t-slow) var(--curve);
+}
+
+.row:hover { background-color: var(--hover); }
+.row:hover .peek { color: var(--ink-soft); }
+
+.row:active { background-color: var(--select); }
 
 .row.on {
-  background: var(--select);
+  background-color: var(--select);
   color: var(--ink);
-  box-shadow: inset 2px 0 0 var(--ok);
+  box-shadow: inset 3px 0 0 var(--rail);
+}
+
+.row.on::after {
+  opacity: 0.5;
+  transform: translateX(0);
+}
+
+.row.on .subj { color: var(--ink); }
+
+/* Unread: a warm wash + a live dot. Obvious at a glance, never shouting. */
+.row.unread {
+  background-image: var(--unread-wash);
 }
 
 .row.unread .from {
@@ -594,19 +630,27 @@ textarea:focus-visible {
   content: "";
   position: absolute;
   left: 8px;
-  top: 12px;
+  top: 15px;
   display: block;
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   margin: 0;
   border-radius: 50%;
   background: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+  transition:
+    transform var(--t-base) var(--curve),
+    box-shadow var(--t-base) var(--curve);
 }
+
+.row.unread:hover .from::before { transform: scale(1.18); }
 
 .from {
   grid-area: from;
-  font-size: 13.5px;
+  font-size: 12.5px;
   color: var(--muted);
+  font-weight: 550;
+  letter-spacing: 0.012em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -614,15 +658,21 @@ textarea:focus-visible {
 
 .when {
   grid-area: when;
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--faint);
   font-variant-numeric: tabular-nums;
   font-family: var(--mono);
+  letter-spacing: 0.02em;
+  padding-top: 1px;
 }
 
 .subj {
   grid-area: subj;
   font-size: 14px;
+  color: var(--ink-soft);
+  font-weight: 500;
+  letter-spacing: -0.006em;
+  line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -633,33 +683,35 @@ textarea:focus-visible {
 .read {
   grid-area: read;
   overflow: auto;
-  padding: 18px 24px 28px;
+  padding: 26px 32px 40px;
   background: var(--bg);
   min-height: 0;
 }
 
 .headers h1 {
-  margin: 0 0 10px;
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  margin: 0 0 14px;
+  font-size: 23px;
+  font-weight: 620;
+  line-height: 1.22;
+  letter-spacing: -0.022em;
   text-wrap: pretty;
   color: var(--ink);
 }
 
 .headers p {
-  margin: 3px 0;
-  color: var(--muted);
-  font-size: 12px;
+  margin: 4px 0;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
 .headers b {
   color: var(--faint);
   display: inline-block;
-  width: 44px;
+  width: 48px;
   font-weight: 650;
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -961,22 +1013,28 @@ textarea:focus-visible {
 
 .compose {
   position: fixed;
-  right: 16px;
-  bottom: calc(var(--status-h) + 12px);
-  width: 360px;
+  right: 20px;
+  bottom: calc(var(--status-h) + 16px);
+  width: 380px;
   background: var(--panel);
+  background-image: var(--sheen);
   border: 1px solid var(--line-strong);
-  padding: 12px;
+  padding: 16px 16px 14px;
   display: grid;
-  gap: 8px;
+  gap: 10px;
   z-index: 5;
-  box-shadow: var(--shadow);
-  border-radius: var(--radius);
+  box-shadow: var(--elev-2);
+  border-radius: var(--radius-lg);
+  transform-origin: bottom right;
+  animation: panel-rise var(--t-slow) var(--curve) both;
 }
 
 .compose strong {
-  font-size: 13px;
-  letter-spacing: 0.03em;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .compose input,
@@ -985,27 +1043,62 @@ textarea:focus-visible {
   background: var(--bg);
   color: var(--ink);
   border: 1px solid var(--line);
-  padding: 7px 8px;
+  padding: 9px 10px;
   font: inherit;
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
+  transition:
+    border-color var(--t-fast) var(--curve),
+    box-shadow var(--t-fast) var(--curve);
 }
+
+.compose input:focus-visible,
+.compose textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.compose input::placeholder,
+.compose textarea::placeholder { color: var(--faint); }
 
 /* ——— Controls ——— */
 
 button {
   background: var(--panel-2);
+  background-image: var(--sheen);
   color: var(--ink);
   border: 1px solid var(--line);
-  padding: 5px 10px;
+  padding: 6px 12px;
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  border-radius: var(--radius);
+  font-weight: 550;
+  letter-spacing: 0.012em;
+  border-radius: var(--radius-md);
+  transition:
+    background-color var(--t-fast) var(--curve),
+    border-color var(--t-fast) var(--curve),
+    color var(--t-fast) var(--curve),
+    box-shadow var(--t-fast) var(--curve),
+    transform var(--t-fast) var(--curve);
 }
 
 button:hover:not(:disabled) {
-  background: var(--btn-hover);
+  background-color: var(--btn-hover);
   border-color: var(--line-strong);
+  box-shadow: var(--elev-1);
+}
+
+/* Press lands: a hair down, shadow collapses. */
+button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: none;
+  border-color: var(--accent-dim);
+}
+
+button:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
 }
 
 button:disabled {
@@ -1016,11 +1109,11 @@ button:disabled {
 button.danger {
   border-color: var(--danger);
   color: var(--danger-ink);
-  background: var(--danger-bg);
+  background-color: var(--danger-bg);
 }
 
 button.danger:hover:not(:disabled) {
-  background: var(--danger-hover);
+  background-color: var(--danger-hover);
 }
 
 .meta,
@@ -1549,6 +1642,255 @@ input[type="checkbox"] {
 :root[data-theme="modern"] .compose {
   padding: 10px;
   gap: 6px;
+}
+
+/* ═══ Fluid layer: motion, rhythm, scrollbars ═══════════════════════
+   Everything below is transform/opacity/colour only. No geometry is
+   animated, so a 1000-row .list still scrolls at frame rate.
+   All of it is switched off by the prefers-reduced-motion block. */
+
+@keyframes read-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes read-in-soft {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes panel-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes rail-in {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+/* ——— Reading pane entrance ———
+   Fires whenever the read subtree mounts: opening from the empty state,
+   swapping between an HTML and a plain-text message, attachments or the
+   threat strip appearing, and the phone list→read switch. ~200ms, a few
+   px of lift. Staggered so the header leads and the body follows. */
+
+.read .headers {
+  animation: read-in var(--t-slow) var(--curve) both;
+}
+
+.read .threat,
+.read .attachments,
+.read .inspect {
+  animation: read-in var(--t-slow) var(--curve) 30ms both;
+}
+
+.read .body,
+.read .mail-frame {
+  animation: read-in var(--t-slow) var(--curve) 55ms both;
+}
+
+.read .agent,
+.read .agent-chat {
+  animation: read-in-soft var(--t-slow) var(--curve-in) 90ms both;
+}
+
+.read .empty {
+  animation: read-in-soft var(--t-slow) var(--curve-in) both;
+}
+
+/* Left rail on the open row grows rather than blinking on. */
+.row.on::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--rail);
+  transform-origin: center;
+  animation: rail-in var(--t-base) var(--curve) both;
+}
+
+/* ——— Typography rhythm ——— */
+
+.peek {
+  transition: color var(--t-base) var(--curve);
+}
+
+.row.on .peek,
+.row.unread .peek { color: var(--ink-soft); }
+
+.clip {
+  transition: opacity var(--t-fast) var(--curve);
+}
+
+.row:hover .clip,
+.row.on .clip { opacity: 1; }
+
+.hint,
+.meta {
+  line-height: 1.55;
+}
+
+.note {
+  line-height: 1.5;
+  letter-spacing: 0.005em;
+}
+
+.error {
+  line-height: 1.5;
+  color: var(--danger-ink);
+}
+
+.empty {
+  color: var(--muted);
+  padding: 22px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 34rem;
+  text-wrap: pretty;
+}
+
+/* ——— Folders / sidebar ——— */
+
+.sidebar,
+.folders {
+  scrollbar-gutter: stable;
+}
+
+.folder,
+.acct-line,
+.folders-toggle {
+  transition:
+    background-color var(--t-fast) var(--curve),
+    color var(--t-fast) var(--curve),
+    box-shadow var(--t-base) var(--curve);
+}
+
+.folder:active { transform: none; }
+
+.folder.on {
+  box-shadow: inset 3px 0 0 var(--rail);
+}
+
+.folder .counts {
+  transition: color var(--t-fast) var(--curve);
+}
+
+/* ——— Inputs ——— */
+
+.search,
+input,
+select,
+textarea {
+  transition:
+    border-color var(--t-fast) var(--curve),
+    background-color var(--t-fast) var(--curve),
+    box-shadow var(--t-fast) var(--curve);
+}
+
+.search:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.search:hover { border-color: var(--line-strong); }
+
+/* ——— Elevated surfaces ——— */
+
+.settings,
+.keys {
+  animation: panel-rise var(--t-slow) var(--curve) both;
+}
+
+.agent,
+.agent-chat,
+.attachments,
+.inspect,
+.threat {
+  border-radius: var(--radius-md);
+}
+
+.attachment,
+.attach-chip,
+.msg-actions button {
+  border-radius: var(--radius-md);
+  transition:
+    background-color var(--t-fast) var(--curve),
+    border-color var(--t-fast) var(--curve),
+    color var(--t-fast) var(--curve),
+    box-shadow var(--t-fast) var(--curve),
+    transform var(--t-fast) var(--curve);
+}
+
+.attachment:hover { box-shadow: var(--elev-1); }
+
+.msg-actions { gap: 8px; margin-top: 16px; }
+
+.msg-actions button:hover:not(:disabled) { box-shadow: var(--elev-1); }
+
+.attach-x {
+  border-radius: 50%;
+  transition:
+    background-color var(--t-fast) var(--curve),
+    color var(--t-fast) var(--curve);
+}
+
+.attach-x:hover { background: var(--panel); }
+
+.attach-x:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+/* ——— Slim themed scrollbars ——— */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+  transition: background-color var(--t-base) var(--curve);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {
