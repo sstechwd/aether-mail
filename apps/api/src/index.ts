@@ -7,7 +7,7 @@ import { runAgent, chatWithMail, type AgentSkill } from "./agent.js";
 import { MailStore } from "./store.js";
 import { PROVIDERS } from "./providers.js";
 import { AccountBook, peekSecret } from "./accounts.js";
-import { allowOrigin, MAX_BODY_BYTES, publicAccount, rejectCrossSite } from "./security.js";
+import { corsHeaders, MAX_BODY_BYTES, publicAccount, rejectCrossSite } from "./security.js";
 import { LlmSettings } from "./llm.js";
 import { ChatThread } from "./chat.js";
 import { buildMailCliArgs, runMailCli } from "./mailio.js";
@@ -170,15 +170,23 @@ function runWorkflows(accountId: string): Array<{ id: string; apply: string[] }>
   return applied;
 }
 
+/**
+ * The Origin of the request currently being served.
+ *
+ * Every handler used to have to remember to pass `origin` into json(); most did
+ * not, so data routes returned 200 with no Access-Control-Allow-Origin and the
+ * packaged webview silently discarded them. Node handles one request at a time
+ * per tick here, so a module-level value is safe and removes the whole class of
+ * bug rather than fixing call sites one by one.
+ */
+let currentOrigin: string | undefined;
+
 function json(res: http.ServerResponse, status: number, body: unknown, origin?: string): void {
   const payload = JSON.stringify(body);
   const headers: Record<string, string> = {
     "Content-Type": "application/json; charset=utf-8",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+    ...corsHeaders(origin ?? currentOrigin),
   };
-  const allowed = allowOrigin(origin);
-  if (allowed) headers["Access-Control-Allow-Origin"] = allowed;
   res.writeHead(status, headers);
   res.end(payload);
 }
@@ -209,10 +217,17 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 const server = http.createServer(async (req, res) => {
   if (!req.url || !req.method) return notFound(res);
   const origin = req.headers.origin;
+  // Remember it for this request so every json() response carries CORS.
+  currentOrigin = origin;
   if (rejectCrossSite(origin)) {
     return json(res, 403, { error: "forbidden_origin" }, origin);
   }
-  if (req.method === "OPTIONS") return json(res, 204, {}, origin);
+  if (req.method === "OPTIONS") {
+    // Preflight must answer with the CORS headers, not a bare 204.
+    res.writeHead(204, corsHeaders(origin));
+    res.end();
+    return;
+  }
 
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
 
@@ -389,7 +404,7 @@ const server = http.createServer(async (req, res) => {
         "content-length": String(bytes.length),
         "content-disposition": `attachment; filename="${safeFilename(meta.filename).replace(/"/g, "")}"`,
         "x-content-type-options": "nosniff",
-        ...(origin ? { "access-control-allow-origin": origin } : {}),
+        ...corsHeaders(origin),
       });
       res.end(bytes);
       return;
