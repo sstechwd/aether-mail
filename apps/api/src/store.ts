@@ -31,6 +31,9 @@ export type FixtureMessage = {
   attachmentCount?: number;
   /** IMAP UID + folder, needed to pull a part later. */
   uid?: string;
+  /** The provider's own folder name, e.g. "[Gmail]/Sent Mail". Needed to talk
+   *  back to IMAP, since the UI shows the canonical name instead. */
+  remoteFolder?: string;
 };
 
 export type FolderSummary = {

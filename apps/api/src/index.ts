@@ -27,6 +27,8 @@ import {
   type MailAttachment,
 } from "./attachments.js";
 import { buildReply, buildForward } from "./reply.js";
+import { Outbox } from "./outbox.js";
+import { canonicalFolder, pickSyncFolders, sortFolders } from "./folders.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -56,6 +58,7 @@ const persona = new PersonaBook(path.join(here, "data/persona.json"));
 const sibyl = new SibylMemory(path.join(here, "data/sibyl.db"));
 const templates = new TemplateBook(path.join(here, "data/templates.json"));
 const inspectPrefs = new InspectBook(path.join(here, "data/inspect.json"));
+const outbox = Outbox.openFile(path.join(here, "data/outbox.json"));
 const chat = new ChatThread();
 const metaPath = path.join(here, "data/meta.json");
 type MetaFile = { lastFetchAt?: string; activeAccountId?: string };
@@ -213,6 +216,73 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     req.on("error", reject);
   });
 }
+
+/**
+ * Deliver one queued message over SMTP.
+ *
+ * Shared by the immediate-send path and the outbox worker so scheduled mail
+ * goes out through exactly the same code as mail sent right now — no second
+ * implementation to drift.
+ */
+async function deliver(item: {
+  accountId: string;
+  to: string;
+  subject: string;
+  body: string;
+  attachments?: string[];
+}): Promise<{ ok: boolean; error?: string }> {
+  const account = accounts.get(item.accountId);
+  if (!account) return { ok: false, error: "no_account" };
+  const result = await runMailCli(
+    buildMailCliArgs({
+      action: "send",
+      secretRef: account.secret_ref,
+      username: account.username,
+      smtpHost: account.smtp_host,
+      smtpPort: account.smtp_port,
+      from: account.email,
+      to: item.to,
+      subject: item.subject,
+    }),
+    JSON.stringify({ body: item.body, attachments: item.attachments ?? [] }),
+  );
+  return { ok: Boolean(result.ok), error: result.error };
+}
+
+/**
+ * Outbox worker. Wakes every 30s, sends whatever is due, and records failures
+ * so the user can see them. `claimDue` marks items in flight, so a slow SMTP
+ * server cannot cause the same message to be sent twice by an overlapping tick.
+ */
+let draining = false;
+async function drainOutbox(): Promise<void> {
+  if (draining) return;
+  draining = true;
+  try {
+    const due = outbox.claimDue(Date.now());
+    for (const item of due) {
+      const sent = await deliver(item);
+      if (sent.ok) {
+        outbox.markSent(item.id);
+        audit.append({ actor: "user", action: "outbox.sent", detail: `to=${item.to}` });
+      } else {
+        outbox.markFailed(item.id, sent.error ?? "send failed");
+        audit.append({ actor: "user", action: "outbox.failed", detail: `to=${item.to}` });
+      }
+    }
+  } catch {
+    // A worker crash must never take the API down.
+  } finally {
+    draining = false;
+  }
+}
+
+const outboxTimer = setInterval(() => {
+  void drainOutbox();
+}, 30_000);
+if (typeof outboxTimer.unref === "function") outboxTimer.unref();
+// Catch anything that came due while the app was closed.
+setTimeout(() => void drainOutbox(), 3_000).unref?.();
 
 const server = http.createServer(async (req, res) => {
   if (!req.url || !req.method) return notFound(res);
@@ -426,6 +496,33 @@ const server = http.createServer(async (req, res) => {
           ? buildForward(src)
           : buildReply(src, { me, all: body.mode === "all" });
       return json(res, 200, { compose: composed }, origin);
+    }
+
+    // Outbox: what is queued or scheduled, and cancel/retry controls.
+    if (req.method === "GET" && url.pathname === "/api/outbox") {
+      return json(res, 200, { items: outbox.list() }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/api/outbox/") && url.pathname.endsWith("/cancel")) {
+      const id = decodeURIComponent(
+        url.pathname.slice("/api/outbox/".length, -"/cancel".length),
+      );
+      const removed = outbox.cancel(id);
+      if (removed) audit.append({ actor: "user", action: "outbox.cancel", detail: id });
+      return json(res, removed ? 200 : 404, { cancelled: removed }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/api/outbox/") && url.pathname.endsWith("/retry")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/outbox/".length, -"/retry".length));
+      const ok = outbox.retry(id);
+      if (ok) void drainOutbox();
+      return json(res, ok ? 200 : 404, { retrying: ok }, origin);
+    }
+
+    // Send the whole queue now, ignoring schedules.
+    if (req.method === "POST" && url.pathname === "/api/outbox/flush") {
+      void drainOutbox();
+      return json(res, 202, { flushing: true }, origin);
     }
 
     if (req.method === "GET" && url.pathname === "/api/fileinfo") {
@@ -743,60 +840,95 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(url.pathname.slice("/api/accounts/".length, -"/sync".length));
       const account = accounts.get(id);
       if (!account) return json(res, 404, { error: "unknown_account" }, origin);
-      const fetched = await runMailCli(
+
+      // Ask the server what folders exist, then sync the ones a mail client
+      // needs. Providers name these differently ("[Gmail]/Sent Mail" vs
+      // "Sent Items"), so the remote name is used for IMAP and the canonical
+      // name is what the UI shows.
+      const probed = await runMailCli(
         buildMailCliArgs({
-          action: "fetch",
+          action: "probe",
           secretRef: account.secret_ref,
           host: account.imap_host,
           port: account.imap_port,
           tls: account.imap_tls,
           username: account.username,
-          folder: "INBOX",
         }),
       );
-      if (!fetched.ok) {
-        return json(res, 502, { error: "fetch_failed", message: fetched.error }, origin);
-      }
-      store.loadFixture(
-        (fetched.messages ?? []).map((m) => ({
-          id: `${account.id}-${m.id}`,
-          accountId: account.id,
-          folder: m.folder || "INBOX",
-          from: m.from,
-          to: m.to,
-          subject: m.subject,
-          date: toIsoDate(m.date || ""),
-          unread: m.unread,
-          // aether-cli now returns a decoded text part. readableBody only has to
-          // strip markup when the sender shipped HTML with no plain alternative.
-          body: readableBody(m.body || ""),
-          headers: m.headers,
-          preview: m.preview || undefined,
-          uid: m.id,
-          attachments: (m.attachments ?? []).map((a) => ({
-            part: a.part,
-            filename: a.filename,
-            mimeType: a.mime_type,
-            size: a.size,
-            contentId: a.content_id ?? null,
-            inline: a.inline,
+      const targets = pickSyncFolders(probed.ok ? probed.folders ?? [] : []);
+
+      let total = 0;
+      let firstError: string | undefined;
+      for (const target of targets) {
+        const fetched = await runMailCli(
+          buildMailCliArgs({
+            action: "fetch",
+            secretRef: account.secret_ref,
+            host: account.imap_host,
+            port: account.imap_port,
+            tls: account.imap_tls,
+            username: account.username,
+            folder: target.remote,
+          }),
+        );
+        if (!fetched.ok) {
+          // One bad folder must not abort the whole sync.
+          if (target.canonical === "INBOX") firstError = fetched.error;
+          continue;
+        }
+        total += fetched.messages?.length ?? 0;
+        store.loadFixture(
+          (fetched.messages ?? []).map((m) => ({
+            id: `${account.id}-${target.canonical}-${m.id}`,
+            accountId: account.id,
+            folder: target.canonical,
+            from: m.from,
+            to: m.to,
+            subject: m.subject,
+            date: toIsoDate(m.date || ""),
+            unread: m.unread,
+            body: readableBody(m.body || ""),
+            headers: m.headers,
+            preview: m.preview || undefined,
+            uid: m.id,
+            remoteFolder: target.remote,
+            attachments: (m.attachments ?? []).map((a) => ({
+              part: a.part,
+              filename: a.filename,
+              mimeType: a.mime_type,
+              size: a.size,
+              contentId: a.content_id ?? null,
+              inline: a.inline,
+            })),
+            hiddenMedia:
+              remoteImageCount(m.html || m.body || "") || countHiddenMedia(m.html || m.body || ""),
+            html: m.html
+              ? m.html.slice(0, 200_000)
+              : looksLikeHtml(m.body || "")
+                ? (m.body || "").slice(0, 40_000)
+                : undefined,
           })),
-          hiddenMedia:
-            remoteImageCount(m.html || m.body || "") || countHiddenMedia(m.html || m.body || ""),
-          // Prefer the real text/html MIME part; fall back to sniffing only for
-          // senders that shipped HTML inside what they labelled as text.
-          html: m.html
-            ? m.html.slice(0, 200_000)
-            : looksLikeHtml(m.body || "")
-              ? (m.body || "").slice(0, 40_000)
-              : undefined,
-        })),
-      );
-      store.save();
+        );
+      }
+
+      if (total === 0 && firstError) {
+        return json(res, 502, { error: "fetch_failed", message: firstError }, origin);
+      }
+      store.saveNow();
       activeAccountId = account.id;
       rememberFetch();
       const ran = runWorkflows(account.id);
-      return json(res, 200, { folders: store.listFolders(account.id), count: fetched.messages?.length ?? 0, workflows: ran }, origin);
+      return json(
+        res,
+        200,
+        {
+          folders: sortFolders(store.listFolders(account.id)),
+          count: total,
+          synced: targets.map((t) => t.canonical),
+          workflows: ran,
+        },
+        origin,
+      );
     }
 
     if (req.method === "GET" && url.pathname === "/api/workflows") {
