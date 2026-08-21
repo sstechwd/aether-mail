@@ -42,6 +42,7 @@ import { SnoozeBook, snoozeUntil, type SnoozePreset } from "./snooze.js";
 import { MuteBook } from "./mute.js";
 import { mergeAccounts } from "./unified.js";
 import { createBackup, listBackupContents, restoreBackup } from "./backup.js";
+import { parseProposal, describeProposal, PROPOSAL_SCHEMA } from "./agent-tools.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -351,6 +352,49 @@ const outboxTimer = setInterval(() => {
   wakeSnoozed();
 }, 30_000);
 if (typeof outboxTimer.unref === "function") outboxTimer.unref();
+
+/*
+ * Automatic mail sync.
+ *
+ * Mail that only arrives when you press a button is not a mail client, it is a
+ * viewer. Every account is synced on an interval and once shortly after start.
+ *
+ * Deliberately conservative: a five-minute default, skipped entirely while a
+ * manual sync is running so the two cannot overlap on the same mailbox, and a
+ * single failure is logged rather than retried aggressively — a wrong password
+ * should not become a login-attempt flood at someone's provider.
+ */
+const AUTO_SYNC_MS = Number(process.env.AETHER_SYNC_MS ?? 5 * 60 * 1000);
+let autoSyncRunning = false;
+
+async function autoSyncAll(): Promise<void> {
+  if (autoSyncRunning) return;
+  autoSyncRunning = true;
+  try {
+    for (const account of accounts.list()) {
+      try {
+        const r = await fetch(`http://127.0.0.1:${PORT}/api/accounts/${account.id}/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: "http://tauri.localhost" },
+          body: "{}",
+        });
+        if (!r.ok) console.warn(`auto-sync: ${account.email} -> HTTP ${r.status}`);
+      } catch (e) {
+        console.warn(`auto-sync failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  } finally {
+    autoSyncRunning = false;
+  }
+}
+
+if (AUTO_SYNC_MS > 0) {
+  const syncTimer = setInterval(() => void autoSyncAll(), AUTO_SYNC_MS);
+  if (typeof syncTimer.unref === "function") syncTimer.unref();
+  // Not at t=0: let the server finish binding before hitting its own port.
+  const firstSync = setTimeout(() => void autoSyncAll(), 20_000);
+  if (typeof firstSync.unref === "function") firstSync.unref();
+}
 // Catch anything that came due while the app was closed.
 setTimeout(() => {
   void drainOutbox();
@@ -766,6 +810,85 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(url.pathname.slice("/api/calendar/".length));
       const ok = calendar.remove(id);
       return json(res, ok ? 200 : 404, { removed: ok }, origin);
+    }
+
+    /*
+     * Agent proposals: the model suggests, a human commits.
+     *
+     * The model is asked for a structured proposal rather than prose. We
+     * validate it against a closed allow-list (agent-tools.ts), show the user
+     * plain language, and only act on an explicit approve call carrying the
+     * exact proposal they saw.
+     *
+     * The model never reaches the store. Mail is attacker-controlled input, so
+     * a model that could act on it could be told to act by whoever wrote the
+     * message. There is no send or delete action in the schema at all.
+     */
+    if (req.method === "POST" && url.pathname === "/api/agent/propose") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      const messageId = asString(body.messageId, "", 400);
+      const msg = messageId ? store.getMessage(messageId) : null;
+      if (!msg) return json(res, 404, { error: "no_message" }, origin);
+
+      try {
+        const reply = await runAgent({
+          skill: "triage",
+          from: msg.from,
+          subject: msg.subject,
+          body: (msg.body ?? "").slice(0, 4000),
+          instructionOverride: `${PROPOSAL_SCHEMA}\n\nSuggest one automation for this message.`,
+        });
+        const proposal = parseProposal(reply.text ?? "");
+        if (!proposal) {
+          return json(res, 200, { proposal: null, note: "No safe automation suggested." }, origin);
+        }
+        return json(
+          res,
+          200,
+          { proposal, describe: describeProposal(proposal), note: proposal.why ?? null },
+          origin,
+        );
+      } catch (e) {
+        return json(res, 502, { error: e instanceof Error ? e.message : "agent_failed" }, origin);
+      }
+    }
+
+    /* Execute a proposal the user approved. Re-validated, never trusted. */
+    if (req.method === "POST" && url.pathname === "/api/agent/approve") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+
+      // Re-parse from the wire rather than trusting a client-side object: the
+      // approve call is the security boundary, not the propose call.
+      const proposal = parseProposal(JSON.stringify(body.proposal ?? {}));
+      if (!proposal) return json(res, 400, { error: "bad_proposal" }, origin);
+
+      if (proposal.action === "create_rule" && proposal.rule) {
+        const rule = ruleBook.add({
+          field: proposal.rule.field,
+          contains: proposal.rule.contains,
+          action: proposal.rule.then,
+          folder: proposal.rule.folder,
+          enabled: true,
+        });
+        audit.append({ actor: "user", action: "agent.rule.approved", detail: rule.contains });
+        return json(res, 201, { created: "rule", rule, rules: ruleBook.list() }, origin);
+      }
+
+      if (proposal.action === "create_template" && proposal.template) {
+        const tpl = templates.add({
+          name: proposal.template.name,
+          subject: "",
+          body: proposal.template.body,
+        });
+        audit.append({ actor: "user", action: "agent.template.approved", detail: tpl.name });
+        return json(res, 201, { created: "template", template: tpl }, origin);
+      }
+
+      return json(res, 400, { error: "bad_proposal" }, origin);
     }
 
     /*

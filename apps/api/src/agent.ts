@@ -173,8 +173,17 @@ export async function runAgent(opts: {
   allowCloud?: boolean;
   voice?: string;
   memory?: string;
+  /**
+   * Replace the built-in task instruction.
+   *
+   * Used by the proposal flow, which needs the model to emit a structured
+   * object rather than the prose the standard skills ask for. It only changes
+   * what we ASK for — the reply is still validated against a closed allow-list
+   * before anything acts on it.
+   */
+  instructionOverride?: string;
 }): Promise<AgentResult> {
-  const task = taskFor(opts.skill);
+  const task = opts.instructionOverride ?? taskFor(opts.skill);
 
   const prompt = `${SYSTEM}
 ${opts.voice ? `\n${opts.voice}\n` : ""}

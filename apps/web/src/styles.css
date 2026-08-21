@@ -2901,3 +2901,18 @@ textarea:focus-visible {
 }
 
 .backup-row:hover { border-color: var(--line-strong); }
+
+/* ===== Agent automation proposal ====================================== */
+.proposal {
+  margin: 10px 0;
+  padding: 12px 14px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.proposal > strong { display: block; margin-bottom: 6px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent-soft); }
+.proposal-what { margin: 0 0 8px; font-size: 14px; line-height: 1.5; color: var(--ink); }
+.proposal-actions { display: flex; gap: 8px; }
+.proposal-actions button { padding: 5px 12px; font-size: 13px; }
+.proposal-actions .subtle { background: transparent; border-color: var(--line-strong); color: var(--muted); }

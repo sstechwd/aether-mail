@@ -320,6 +320,12 @@ export default function App() {
   const [ruleAction, setRuleAction] = useState<"move" | "star" | "read">("move");
   const [ruleFolder, setRuleFolder] = useState("Archive");
   const [ruleNote, setRuleNote] = useState<string | null>(null);
+  /** A pending agent automation suggestion, awaiting a human click. */
+  const [proposal, setProposal] = useState<{
+    proposal: unknown;
+    describe: string;
+    note?: string | null;
+  } | null>(null);
   /** Unified inbox rows, and whether it is worth showing at all. */
   const [unified, setUnified] = useState<(Message & { accountEmail?: string; rowKey?: string })[]>([]);
   const [unifiedUseful, setUnifiedUseful] = useState(false);
@@ -735,6 +741,34 @@ export default function App() {
     } catch {
       setUnified([]);
       setUnifiedUseful(false);
+    }
+  }
+
+  /**
+   * Ask the model to suggest one automation for the open message.
+   *
+   * The reply is a structured proposal validated server-side against a closed
+   * allow-list — there is no send or delete action in the schema. Nothing is
+   * created until the user clicks Create it.
+   */
+  async function proposeAutomation(): Promise<void> {
+    if (!selectedId) return;
+    setBusy("propose");
+    setProposal(null);
+    try {
+      const d = await api<{ proposal: unknown; describe?: string; note?: string }>(
+        "/api/agent/propose",
+        { method: "POST", body: JSON.stringify({ messageId: selectedId }) },
+      );
+      if (!d.proposal) {
+        setRuleNote(d.note ?? "Nothing worth automating here.");
+        return;
+      }
+      setProposal({ proposal: d.proposal, describe: d.describe ?? "", note: d.note });
+    } catch (e) {
+      setRuleNote(e instanceof Error ? e.message : "Agent unavailable.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -2454,8 +2488,43 @@ export default function App() {
                   <button disabled={!!busy} onClick={() => runSkill("action-items")}>
                     {busy === "action-items" ? "Extracting…" : "Action items"}
                   </button>
+                  {/*
+                    Propose an automation. The model returns a structured
+                    suggestion; nothing happens until the user clicks Create.
+                  */}
+                  <button disabled={!!busy} onClick={() => void proposeAutomation()}>
+                    {busy === "propose" ? "Thinking…" : "⚡ Automate this"}
+                  </button>
                 </div>
               </header>
+              {proposal ? (
+                <div className="proposal">
+                  <strong>Suggested automation</strong>
+                  <p className="proposal-what">{proposal.describe}</p>
+                  {proposal.note ? <p className="hint">{proposal.note}</p> : null}
+                  <div className="proposal-actions">
+                    <button
+                      onClick={() => {
+                        void api("/api/agent/approve", {
+                          method: "POST",
+                          body: JSON.stringify({ proposal: proposal.proposal }),
+                        })
+                          .then(() => {
+                            setProposal(null);
+                            setRuleNote("Created. Find it under Rules.");
+                            void refreshRules();
+                          })
+                          .catch((e: Error) => setRuleNote(e.message));
+                      }}
+                    >
+                      Create it
+                    </button>
+                    <button className="subtle" onClick={() => setProposal(null)}>
+                      No thanks
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {agent ? (
                 <div className="transcript">
                   {agent.refused.map((r) => (
