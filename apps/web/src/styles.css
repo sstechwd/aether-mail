@@ -2972,3 +2972,16 @@ textarea:focus-visible {
   padding: 4px 8px;
 }
 .suggest-act .ghost:hover { color: var(--ink); border-color: var(--line); }
+
+/* Withheld domains: informational, muted, deliberately no action button. */
+.suggests.held {
+  border-left-color: var(--muted);
+  background: transparent;
+}
+.suggests.held .suggests-head strong { color: var(--ink-soft); font-weight: 500; }
+.suggest-why {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}

@@ -1092,6 +1092,10 @@ const server = http.createServer(async (req, res) => {
         {
           corresponded,
           alreadyRuled: ruleBook.list().map((r) => r.contains),
+          // Ask for withheld domains too, so the panel can explain the
+          // omission instead of silently showing a shorter list. They come
+          // back after the cap, so they never cost an actionable suggestion.
+          includeWithheld: true,
         },
       );
 

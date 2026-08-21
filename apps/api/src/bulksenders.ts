@@ -152,6 +152,7 @@ export function findBulkSenders(rows: SourceRow[], opts: Options = {}): Candidat
   }
 
   const out: Candidate[] = [];
+  const withheld: Candidate[] = [];
   for (const [domain, entry] of byDomain) {
     if (entry.count < minCount) continue;
     // A domain the user writes to is a correspondent, not a newsletter.
@@ -176,7 +177,7 @@ export function findBulkSenders(rows: SourceRow[], opts: Options = {}): Candidat
      */
     if (entry.protectedSubject) {
       if (opts.includeWithheld) {
-        out.push({
+        withheld.push({
           match: domain,
           label,
           count: entry.count,
@@ -192,5 +193,14 @@ export function findBulkSenders(rows: SourceRow[], opts: Options = {}): Candidat
   }
 
   out.sort((a, b) => b.count - a.count);
-  return out.slice(0, maxCandidates);
+  withheld.sort((a, b) => b.count - a.count);
+  /*
+   * Withheld domains are kept in a SEPARATE list and appended after the cap.
+   *
+   * Sharing the budget meant a large withheld domain sorted above real
+   * candidates and pushed a perfectly good suggestion off the end — so turning
+   * on the explanation would have COST the user actionable suggestions. An
+   * explanation must never be more expensive than staying silent.
+   */
+  return [...out.slice(0, maxCandidates), ...withheld.slice(0, maxCandidates)];
 }

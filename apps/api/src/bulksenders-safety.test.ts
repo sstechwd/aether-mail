@@ -97,4 +97,39 @@ describe("findBulkSenders — mail you must never bury", () => {
     expect(withheld[0].withheld).toBe(true);
     expect(withheld[0].reason).toContain("security");
   });
+
+  it("a withheld domain never displaces an actionable suggestion", () => {
+    /*
+     * The bug this pins: withheld entries used to share the candidate budget
+     * and sort by count, so a big withheld domain would push a perfectly good
+     * suggestion off the end of the list. Turning on the explanation would
+     * then have COST the user actionable suggestions.
+     */
+    const rows = [
+      // One huge domain that must be withheld.
+      ...Array.from({ length: 50 }, () => m("promo@mixed.example", "Sale")),
+      m("sys@mixed.example", "Security alert"),
+      // Six smaller, perfectly safe senders.
+      ...Array.from({ length: 6 }, (_, i) =>
+        Array.from({ length: 6 }, () => m(`news@safe${i}.example`, "Newsletter")),
+      ).flat(),
+    ];
+
+    const found = findBulkSenders(rows, { includeWithheld: true });
+    const actionable = found.filter((c) => !c.withheld);
+
+    // The full quota of actionable suggestions survives.
+    expect(actionable).toHaveLength(5);
+    expect(actionable.every((c) => c.match.startsWith("safe"))).toBe(true);
+    // And the withheld one is still reported, just not competing.
+    expect(found.some((c) => c.withheld && c.match === "mixed.example")).toBe(true);
+  });
+
+  it("omits withheld domains entirely unless asked for them", () => {
+    const rows = [
+      ...Array.from({ length: 9 }, () => m("promo@mixed.example", "Sale")),
+      m("sys@mixed.example", "Security alert"),
+    ];
+    expect(findBulkSenders(rows)).toEqual([]);
+  });
 });

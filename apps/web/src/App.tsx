@@ -326,7 +326,15 @@ export default function App() {
    * Not model output — counting senders is arithmetic, so this works even
    * with no LLM configured.
    */
-  type Suggestion = { match: string; label: string; count: number; unread: number };
+  type Suggestion = {
+    match: string;
+    label: string;
+    count: number;
+    unread: number;
+    /** Held back because filing this domain would bury important mail. */
+    withheld?: boolean;
+    reason?: string;
+  };
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   /** A pending agent automation suggestion, awaiting a human click. */
   const [proposal, setProposal] = useState<{
@@ -1891,38 +1899,66 @@ export default function App() {
               to are excluded, so a colleague who mails often is never offered
               up for filing.
             */}
-            {suggestions.length > 0 ? (
+            {suggestions.some((s) => !s.withheld) ? (
               <div className="suggests">
                 <div className="suggests-head">
                   <strong>Noticed in your inbox</strong>
                   <span className="hint">
-                    {suggestions.reduce((n, s) => n + s.count, 0)} messages from{" "}
-                    {suggestions.length} senders
+                    {suggestions.filter((s) => !s.withheld).reduce((n, s) => n + s.count, 0)}{" "}
+                    messages from {suggestions.filter((s) => !s.withheld).length} senders
                   </span>
                 </div>
-                {suggestions.map((s) => (
-                  <div className="suggest-row" key={s.match}>
-                    <span className="suggest-what">
-                      <strong>{s.count}</strong> from <em>{s.label}</em>
-                      {s.unread > 0 ? <span className="suggest-unread">{s.unread} unread</span> : null}
-                    </span>
-                    <span className="suggest-act">
-                      <button
-                        onClick={() => void acceptSuggestion(s, "Archive")}
-                        title={`File mail from ${s.match} into Archive`}
-                      >
-                        File to Archive
-                      </button>
-                      <button
-                        className="ghost"
-                        onClick={() => setSuggestions((prev) => prev.filter((p) => p.match !== s.match))}
-                        title="Not this one"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  </div>
-                ))}
+                {suggestions
+                  .filter((s) => !s.withheld)
+                  .map((s) => (
+                    <div className="suggest-row" key={s.match}>
+                      <span className="suggest-what">
+                        <strong>{s.count}</strong> from <em>{s.label}</em>
+                        {s.unread > 0 ? (
+                          <span className="suggest-unread">{s.unread} unread</span>
+                        ) : null}
+                      </span>
+                      <span className="suggest-act">
+                        <button
+                          onClick={() => void acceptSuggestion(s, "Archive")}
+                          title={`File mail from ${s.match} into Archive`}
+                        >
+                          File to Archive
+                        </button>
+                        <button
+                          className="ghost"
+                          onClick={() =>
+                            setSuggestions((prev) => prev.filter((p) => p.match !== s.match))
+                          }
+                          title="Not this one"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            ) : null}
+            {/*
+              Domains deliberately NOT offered. Shown without any action button
+              — the whole point is that a blunt domain rule would bury mail the
+              user must see, so there is nothing safe to click here.
+            */}
+            {suggestions.some((s) => s.withheld) ? (
+              <div className="suggests held">
+                <div className="suggests-head">
+                  <strong>Not suggested, on purpose</strong>
+                </div>
+                {suggestions
+                  .filter((s) => s.withheld)
+                  .map((s) => (
+                    <div className="suggest-row" key={s.match}>
+                      <span className="suggest-what">
+                        <strong>{s.count}</strong> from <em>{s.label}</em>
+                        <span className="suggest-why">{s.reason}</span>
+                      </span>
+                    </div>
+                  ))}
               </div>
             ) : null}
             {rules.length === 0 ? (
