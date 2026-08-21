@@ -772,6 +772,26 @@ export default function App() {
     }
   }
 
+  /**
+   * Remove an empty folder the user created.
+   *
+   * Confirms first, then lets the server decide: it refuses standard folders
+   * and any folder still holding mail, so deleting a folder can never be an
+   * accidental way to lose messages.
+   */
+  async function removeFolder(name: string): Promise<void> {
+    if (!window.confirm(`Remove the folder "${name}"?`)) return;
+    try {
+      const d = await api<{ folders?: Folder[] }>(`/api/folders/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      });
+      if (d.folders) setFolders(d.folders);
+      if (folder === name) setFolder("INBOX");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not remove that folder.");
+    }
+  }
+
   async function refreshRules(): Promise<void> {
     try {
       const data = await api<{ rules: Rule[] }>("/api/rules");
@@ -1625,6 +1645,13 @@ export default function App() {
             className={`folder${f.name === folder ? " on" : ""}${
               dropFolder === f.name ? " drop" : ""
             }`}
+            onContextMenu={(e) => {
+              // Right-click to remove a folder you made. The server refuses
+              // standard folders and anything still holding mail, so this can
+              // only ever delete an empty custom folder.
+              e.preventDefault();
+              void removeFolder(f.name);
+            }}
             onDragOver={(e) => {
               // Only a real message drag may drop here, and never onto the
               // folder it already lives in.

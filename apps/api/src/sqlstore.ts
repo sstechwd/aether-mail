@@ -295,6 +295,37 @@ export class SqlStore {
     return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  /**
+   * Remove a user-created folder.
+   *
+   * Refuses when the folder still holds mail: deleting a folder must never be
+   * an accidental way to lose messages. Also refuses the standard folders —
+   * a user who deletes Sent has broken their client rather than tidied it,
+   * and the server recreates them on the next sync anyway.
+   *
+   * Returns false rather than throwing so a caller can report "could not"
+   * without a try/catch.
+   */
+  removeFolder(accountId: string, name: string): boolean {
+    const STANDARD = ["INBOX", "Sent", "Drafts", "Trash", "Spam", "Archive"];
+    if (STANDARD.some((s) => s.toLowerCase() === name.toLowerCase())) return false;
+
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM messages WHERE account_id = ? AND folder = ?")
+      .get(accountId, name) as Row | undefined;
+    if (Number(row?.n ?? 0) > 0) return false;
+
+    const before = this.db
+      .prepare("SELECT COUNT(*) AS n FROM extra_folders WHERE account_id = ? AND name = ?")
+      .get(accountId, name) as Row | undefined;
+    if (Number(before?.n ?? 0) === 0) return false;
+
+    this.db
+      .prepare("DELETE FROM extra_folders WHERE account_id = ? AND name = ?")
+      .run(accountId, name);
+    return true;
+  }
+
   markRead(id: string): void {
     this.db.prepare("UPDATE messages SET unread = 0 WHERE id = ?").run(id);
   }

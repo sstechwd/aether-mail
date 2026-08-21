@@ -1423,6 +1423,31 @@ const server = http.createServer(async (req, res) => {
       return json(res, 201, { folders: store.listFolders(activeAccountId) }, origin);
     }
 
+    /*
+     * Remove a folder the user created.
+     *
+     * The store refuses when the folder still holds mail or is a standard mail
+     * folder, so a 409 here means "that would lose messages", not a bug.
+     */
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/folders/")) {
+      const name = decodeURIComponent(url.pathname.slice("/api/folders/".length));
+      if (!name) return json(res, 400, { error: "need name" }, origin);
+      const removed = store.removeFolder(activeAccountId, name);
+      if (!removed) {
+        return json(
+          res,
+          409,
+          {
+            error: "cannot_remove",
+            message: "Only empty folders you created can be removed.",
+          },
+          origin,
+        );
+      }
+      audit.append({ actor: "user", action: "folder.remove", detail: name });
+      return json(res, 200, { folders: store.listFolders(activeAccountId) }, origin);
+    }
+
     if (req.method === "GET" && url.pathname === "/api/persona") {
       const p = persona.read();
       return json(res, 200, { count: p.samples.length, updatedAt: p.updatedAt }, origin);

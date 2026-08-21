@@ -284,4 +284,33 @@ describe("SqlStore", () => {
     store.ensureFolder("acc-1", "Archive");
     expect(store.listFolders("acc-1").some((f) => f.name === "Archive")).toBe(true);
   });
+
+  describe("removeFolder", () => {
+    it("removes an empty folder the user created", () => {
+      store.loadFixture([MSG]);
+      store.ensureFolder("acc-1", "Scratch");
+      expect(store.removeFolder("acc-1", "Scratch")).toBe(true);
+      expect(store.listFolders("acc-1").some((f) => f.name === "Scratch")).toBe(false);
+    });
+
+    it("refuses to remove a folder that still holds mail", () => {
+      // Deleting a folder must never be a way to lose messages by accident.
+      store.loadFixture([MSG]);
+      expect(store.removeFolder("acc-1", "INBOX")).toBe(false);
+      expect(store.listMessages("acc-1", "INBOX")).toHaveLength(1);
+    });
+
+    it("refuses to remove a standard mail folder even when empty", () => {
+      // A user who deletes Sent or Trash has broken their client, not tidied
+      // it — those are recreated by the server on the next sync anyway.
+      store.ensureFolder("acc-1", "Trash");
+      expect(store.removeFolder("acc-1", "Trash")).toBe(false);
+      expect(store.removeFolder("acc-1", "INBOX")).toBe(false);
+      expect(store.removeFolder("acc-1", "Sent")).toBe(false);
+    });
+
+    it("returns false for a folder that does not exist", () => {
+      expect(store.removeFolder("acc-1", "Nope")).toBe(false);
+    });
+  });
 });
