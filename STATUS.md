@@ -1,82 +1,51 @@
-# STATUS.md — morning briefing
+# STATUS — Aether Mail
 
-**Updated:** 2026-08-20 (folders, outbox, calendar, contacts, threading) · repo is **PUBLIC** and pushed.
+**Updated:** 2026-08-20 · `main` and `dev` at `7d31c0d` · repo is **PUBLIC** (MIT)
 
-For full technical state, read **`CHECKPOINT.md`** first. This file is the human-facing "what to click" version.
+## Run it
 
-## How to start
+Double-click `scriptsun-app.bat`. Rebuild after code changes with
+`scriptsuild-app.bat` (it closes the running app first).
 
-**It's a real app now.** Double-click the installer, or run the built exe:
+## What works right now
 
-```
-target\release\bundle\nsis\Aether Mail_0.1.0_x64-setup.exe    <- install it
-target\release\aether-desktop.exe                             <- or just run it
-```
-No terminal, no browser tab, no Node install. Windows will warn that it's from an
-unknown publisher — that's the missing code-signing cert, not a problem with the app.
+Mail: IMAP fetch across INBOX/Sent/Drafts/Trash/Spam, real MIME parsing,
+attachments in and out, reply/reply-all/forward, threading, local search.
 
-Still want the dev loop? `scripts\start-mvp.bat` → http://127.0.0.1:5173/
+Sending: two human clicks + a token. **The agent cannot send or delete** — not
+by policy, but because `agent.ts` has no import path to the send code.
 
-## What works
+Writing: rich-text compose (bold, italic, lists, links). Formatted mail goes as
+multipart/alternative so plain-text readers still get a readable part.
 
-Run it: double-click `scripts/run-app.bat`. Rebuild: `scripts/build-app.bat`.
+Organising: multi-select (ctrl/shift-click), right-click menu, 12-second undo,
+drag mail onto folders, filing rules, snooze, mute thread, Outbox with scheduled
+send that survives closing the app.
 
-- **Folders** — INBOX, Sent, Drafts, Trash, Spam with live counts.
-- **Conversations** — toggle in the toolbar. Your inbox collapses 149 rows to 102.
-- **Outbox + Send later** — pick a date/time in compose; it goes out even if you close the app.
-  Cancel or retry anything queued.
-- **Calendar invites** — a meeting invite shows a card with the time and an Add to calendar button.
-- **Signatures** — set one in Settings; it is added when you confirm a send.
-- **Contacts** — start typing in To and it suggests people you already email.
-- **Assistant** — the sidebar has a standalone chat. It still cannot send or delete.
+Views: Calendar (month/week/day), Contacts, Rules, Assistant, All inboxes
+(hidden until you add a second account). Resizable panes. Five themes.
 
+Press `?` for the shortcut sheet.
 
+## Known limits
 
-- **Folders** — INBOX, Sent, Drafts, Trash, Spam sync from your real mailbox with live counts.
-- **Outbox + Send later** — pick a date/time in compose and the mail waits in the Outbox.
-  It goes out even if you close the app. Cancel or retry anything queued.
-- **Assistant** — click "✦ Assistant" in the sidebar to chat without opening a message.
-  It still cannot send or delete; that is always your click.
+- **Storage does not scale yet.** `data/mail.json` is 8.0 MB for 246 messages,
+  fully resident in RAM — about 325 MB at 10,000. Fine for one mailbox, wrong
+  before anyone connects a large archive. SQLite + FTS5 is the fix.
+- CI cannot run: the GitHub token lacks the `workflow` scope. One command fixes
+  it, and it needs a browser so only you can run it:
+  `gh auth refresh -h github.com -s workflow`
+- No code-signing certificate, so Windows SmartScreen warns on first run.
+  `docs/SIGNING.md` is honest that there is no technical way around this.
 
+## Next
 
-3-pane client, fixture + real Gmail/IMAP accounts (isolated, switchable). Fetch pulls the newest 40 messages,
-sorted correctly, HTML rendered in a sandboxed iframe (remote images blocked until you click Load).
-Header inspect (SPF/DKIM/From-vs-Return-Path) auto-opens on suspect mail. Spoken workflows compile locally
-(star/archive/keep-unread/file). Sibyl memory (`remember that…`). Two-click Confirm send. Themes
-(Filament/Retro/Modern) work even if the API is down. Onboarding screen on first run with no account.
+1. SQLite + FTS5 in `crates/mail-store` — the only remaining item that changes
+   what the app can do
+2. Conversation view in the reading pane (threading groups; the pane still
+   shows one message)
+3. Attachment previews
 
-**New this session — mail actually reads like mail.** Subjects were showing as
-`=?utf-8?b?UGVyZmVjdCBQeXRob24...?=` and bodies leaked MIME boundaries and `=E2=80=99`. Real MIME
-parsing now runs in Rust (Stalwart `mail-parser`): proper plain/HTML parts, quoted-printable and
-base64 decoded, accented and emoji subjects correct. Checked against your live inbox: **80 messages,
-0 garbled subjects, 0 MIME leaks.** Attachments now show as a strip under the header and download on
-click; inline `cid:` images are pulled from the message's own bytes (no network, no tracker risk).
+## Tests
 
-**Also new — Aether Mail is a downloadable desktop app.** Tauri 2 shell, 11MB exe, 25MB installer.
-It opens its own window, starts its own backend, and shuts it down when you close it. Verified the
-way a stranger would get it: I dropped the backend alone into an empty folder with no repo and no
-Node installed, and it booted and served mail.
-
-Tests: **vitest 75/75**, **cargo green + clippy clean**, installer builds.
-
-## What to click
-
-1. Click your Gmail account in the sidebar → **Fetch INBOX**.
-2. Open a message with images → **Load images** if you trust the sender.
-3. Open something suspicious-looking → header inspect should auto-open.
-4. Chat: `what's in my inbox`, `inspect headers`, `remember that …` — all local, no Ollama wait.
-5. Reply to something → **Confirm send** twice.
-
-## Still not a daily driver
-
-- No OAuth (app password only — some work/school tenants block this)
-- Installer is unsigned (SmartScreen warning). We ship build provenance + checksums + a portable zip instead,
-  which is what OSS projects do before they can afford a cert. Path to signing: `docs/SIGNING.md`
-- The bundled backend is 89MB because it carries Node's runtime; our code is 86KB of that. Porting it to
-  Rust would cut the installer to ~8MB — that's the next big win
-- Attachments/inline images work in tests, but **none of your 40 fetched newsletters actually had one** —
-  send yourself a mail with a PDF and an inline logo to confirm it on real mail
-- Overnight store is still `data/mail.json`, not the Rust SQLite store yet
-- Public GitHub: no
-
-Money (honest, not a pitch): `docs/INCOME.md` — free MIT client, optional Aether+ later.
+292 API · 47 web · 24 Rust suites. `npm run test` and `cargo test --workspace`.

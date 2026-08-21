@@ -84,6 +84,23 @@ SHA256SUMS instead (`docs/SIGNING.md`).
   fallback. Live mailbox: 149 rows → 102, 37 conversations.
 - **Standalone assistant** — `✦ Assistant` in the sidebar, chat with no message open.
 
+## 4b. Shipped 2026-08-20 (verified against the live mailbox)
+
+Multi-select + right-click menu + undo; filing rules (user-editable, run on
+demand and on sync); snooze (later/tomorrow/weekend/week, survives app close);
+mute thread; rich-text compose -> multipart/alternative; unified inbox (hidden
+while only one account exists); remote-image policy with per-sender trust;
+drag mail to folders; resizable panes; calendar month/week/day; contacts
+pruning; pop-out message window; five themes.
+
+Three invariants worth not relearning:
+- Rule actions are `move | star | read`. There is no send variant, so a rule
+  cannot become an auto-responder. Type error, not policy.
+- Composed HTML is sanitized at PREPARE, not send, so the confirm preview shows
+  exactly what goes out. Strict allow-list; `<img>` dropped entirely.
+- A view that would be a no-op on this user's data (unified inbox with one
+  account) must hide itself. The API reports `meaningful`.
+
 ## 5. Hard rules (violating = wrong)
 
 - **Client only.** No hosted inbox. Not a Thunderbird fork (ADR 0001).
