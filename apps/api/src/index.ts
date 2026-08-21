@@ -43,7 +43,9 @@ import { MuteBook } from "./mute.js";
 import { mergeAccounts } from "./unified.js";
 import { createBackup, listBackupContents, restoreBackup } from "./backup.js";
 import { parseProposal, describeProposal, PROPOSAL_SCHEMA } from "./agent-tools.js";
-import { providerOAuth, buildAuthUrl, exchangeCode } from "./oauth.js";
+import { providerOAuth, buildAuthUrl, exchangeCode, refreshAccessToken } from "./oauth.js";
+import { TokenCache } from "./tokencache.js";
+import { ensureFreshToken, type RefreshDeps } from "./tokenrefresh.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -92,6 +94,38 @@ const imagePolicy = ImagePolicy.openFile(path.join(here, "data/images.json"));
 const ruleBook = RuleBook.openFile(path.join(here, "data/rules.json"));
 const snoozeBook = SnoozeBook.openFile(path.join(here, "data/snooze.json"));
 const muteBook = MuteBook.openFile(path.join(here, "data/mute.json"));
+
+/*
+ * OAuth access tokens, and how to renew them.
+ *
+ * Only the short-lived access token is cached here; the refresh token stays in
+ * the OS keyring. Dependencies are passed as an object so the refresh decision
+ * logic stays unit-testable without a network or a keyring.
+ */
+const tokenCache = TokenCache.openFile(path.join(here, "data/tokens.json"));
+
+const refreshDeps: RefreshDeps = {
+  clientIdFor: (provider) => process.env[`AETHER_OAUTH_CLIENT_${provider.toUpperCase()}`] ?? "",
+  loadRefreshToken: (secretRef) => {
+    // Stored beside the access token when the user signed in.
+    const raw = peekSecret(`${secretRef}:refresh`);
+    return raw ?? "";
+  },
+  refresh: async (provider, clientId, refreshToken) => {
+    const cfg = providerOAuth(provider);
+    if (!cfg) return null;
+    return refreshAccessToken(cfg, clientId, refreshToken);
+  },
+  storeAccessToken: (secretRef, accessToken, refreshToken) => {
+    // Both go to the keyring: the CLI reads the access token, and the refresh
+    // token may have been rotated by the provider.
+    void runMailCli(buildMailCliArgs({ action: "secret-put", secretRef }), `oauth2:${accessToken}`);
+    void runMailCli(
+      buildMailCliArgs({ action: "secret-put", secretRef: `${secretRef}:refresh` }),
+      refreshToken,
+    );
+  },
+};
 
 /**
  * Wake any snoozed message whose time has come, and put it back where it was.
@@ -910,15 +944,29 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // Tokens go to the keyring like every other credential — never to JSON.
+      /*
+       * Tokens go to the keyring like every other credential — never to JSON.
+       *
+       * Two entries: the access token under the account's secret_ref (what the
+       * mail CLI reads) and the refresh token under a ":refresh" suffix (what
+       * tokenrefresh.ts reads). Splitting them means a rotated access token
+       * never overwrites the long-lived one.
+       */
+      const secretRef = `oauth:${pending.provider}:${pending.email}`;
       const stored = await runMailCli(
-        buildMailCliArgs({ action: "secret-put", secretRef: `oauth:${pending.provider}:${pending.email}` }),
-        JSON.stringify({
-          secret: `oauth2:${token.accessToken}`,
-          refresh: token.refreshToken ?? "",
-          expiresAt: token.expiresAt,
-        }),
+        buildMailCliArgs({ action: "secret-put", secretRef }),
+        `oauth2:${token.accessToken}`,
       );
+      if (token.refreshToken) {
+        await runMailCli(
+          buildMailCliArgs({ action: "secret-put", secretRef: `${secretRef}:refresh` }),
+          token.refreshToken,
+        );
+      }
+      tokenCache.set(secretRef, {
+        accessToken: token.accessToken,
+        expiresAt: token.expiresAt,
+      });
       audit.append({
         actor: "user",
         action: "oauth.complete",
@@ -1622,6 +1670,24 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(url.pathname.slice("/api/accounts/".length, -"/sync".length));
       const account = accounts.get(id);
       if (!account) return json(res, 404, { error: "unknown_account" }, origin);
+
+      /*
+       * Refresh the OAuth session before doing anything.
+       *
+       * Access tokens last about an hour, so without this a signed-in account
+       * works for one sync and then fails — and it presents as a mailbox that
+       * stopped updating rather than as an expired credential.
+       *
+       * A password account short-circuits inside ensureFreshToken.
+       */
+      const fresh = await ensureFreshToken(account, tokenCache, refreshDeps);
+      if (!fresh.ok) {
+        audit.append({ actor: "user", action: "oauth.refresh.failed", detail: fresh.reason });
+        return json(res, 401, { error: "reauth_required", message: fresh.reason }, origin);
+      }
+      if (fresh.refreshed) {
+        audit.append({ actor: "workflow", action: "oauth.refresh", detail: account.provider });
+      }
 
       // Ask the server what folders exist, then sync the ones a mail client
       // needs. Providers name these differently ("[Gmail]/Sent Mail" vs
