@@ -2751,3 +2751,75 @@ textarea:focus-visible {
 }
 
 .undo-toast button:hover { background: var(--accent); }
+
+/* ===== Rules page ===================================================== */
+.rules-page { display: flex; flex-direction: column; gap: 2px; padding: 12px; }
+
+.rules-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rules-bar strong { flex: 1; font-size: 14px; }
+
+.rules-bar button {
+  padding: 6px 12px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.rule-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  transition: background-color 140ms ease-out;
+}
+
+.rule-row:hover { background: var(--hover); }
+.rule-what { color: var(--ink-soft); font-size: 13px; }
+.rule-what em { color: var(--accent-soft); font-style: normal; }
+.rule-then { color: var(--muted); font-size: 12px; }
+
+/* ===== Keyboard cheat sheet =========================================== */
+.key-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px 18px;
+  margin: 10px 0 14px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.key-sec {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.key-grid kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 11px;
+  text-align: center;
+}

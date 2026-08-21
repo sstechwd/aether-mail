@@ -38,6 +38,7 @@ import { CalendarStore } from "./calendar.js";
 import { ImagePolicy } from "./imagepolicy.js";
 import { RuleBook } from "./rules.js";
 import { SnoozeBook, snoozeUntil, type SnoozePreset } from "./snooze.js";
+import { MuteBook } from "./mute.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -73,6 +74,7 @@ const calendar = CalendarStore.openFile(path.join(here, "data/calendar.json"));
 const imagePolicy = ImagePolicy.openFile(path.join(here, "data/images.json"));
 const ruleBook = RuleBook.openFile(path.join(here, "data/rules.json"));
 const snoozeBook = SnoozeBook.openFile(path.join(here, "data/snooze.json"));
+const muteBook = MuteBook.openFile(path.join(here, "data/mute.json"));
 
 /**
  * Wake any snoozed message whose time has come, and put it back where it was.
@@ -749,6 +751,43 @@ const server = http.createServer(async (req, res) => {
       return json(res, ok ? 200 : 404, { removed: ok }, origin);
     }
 
+    // Muted threads. A muted thread's new replies arrive read and archived
+    // rather than being deleted — muting is not unsubscribing.
+    if (req.method === "GET" && url.pathname === "/api/mute") {
+      return json(res, 200, { muted: muteBook.list() }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/mute") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      const subject = asString(body.subject, "", 500);
+      if (!subject.trim()) return json(res, 400, { error: "no_subject" }, origin);
+      const off = body.unmute === true;
+      if (off) muteBook.unmute(subject);
+      else muteBook.mute(subject);
+
+      // Apply immediately to what is already in the inbox, so muting a live
+      // storm quiets it now rather than only affecting future mail.
+      let filed = 0;
+      if (!off) {
+        for (const msg of store.listMessages(activeAccountId, "INBOX", "newest")) {
+          if (!muteBook.isMuted(msg.subject ?? "")) continue;
+          store.markRead(msg.id);
+          store.move(msg.id, "Archive");
+          filed += 1;
+        }
+        store.saveNow();
+      }
+      audit.append({ actor: "user", action: off ? "thread.unmute" : "thread.mute", detail: subject.slice(0, 60) });
+      return json(
+        res,
+        200,
+        { muted: muteBook.list(), filed, folders: store.listFolders(activeAccountId) },
+        origin,
+      );
+    }
+
     // Filing rules. Deterministic, user-visible, and structurally unable to
     // send: the action type has no reply or forward variant.
     if (req.method === "GET" && url.pathname === "/api/rules") {
@@ -1298,6 +1337,39 @@ const server = http.createServer(async (req, res) => {
                 : undefined,
           })),
         );
+      }
+
+      /*
+       * Apply muted threads and filing rules to what just arrived.
+       *
+       * Mute has to run here, not only when the user clicks Mute: the whole
+       * point is to keep FUTURE replies out of the inbox. Rules run here too
+       * so "set once, runs forever" is true rather than a button you have to
+       * remember to press. Both are local and neither can send.
+       */
+      let autoFiled = 0;
+      for (const msg of store.listMessages(activeAccountId, "INBOX", "newest")) {
+        if (muteBook.isMuted(msg.subject ?? "")) {
+          store.markRead(msg.id);
+          store.move(msg.id, "Archive");
+          autoFiled += 1;
+          continue;
+        }
+        const rule = ruleBook.apply({
+          from: msg.from ?? "",
+          to: msg.to ?? "",
+          subject: msg.subject ?? "",
+          folder: msg.folder ?? "INBOX",
+        });
+        if (!rule) continue;
+        if (rule.action === "move" && rule.folder) store.move(msg.id, rule.folder);
+        else if (rule.action === "star") store.setStarred(msg.id, true);
+        else if (rule.action === "read") store.markRead(msg.id);
+        autoFiled += 1;
+      }
+      if (autoFiled > 0) {
+        store.saveNow();
+        audit.append({ actor: "workflow", action: "sync.filed", detail: `${autoFiled} message(s)` });
       }
 
       if (total === 0 && firstError) {

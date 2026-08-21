@@ -92,6 +92,15 @@ type Invite = {
 
 type Contact = { address: string; name?: string; score: number };
 
+type Rule = {
+  id: string;
+  field: "from" | "to" | "subject";
+  contains: string;
+  action: "move" | "star" | "read";
+  folder?: string;
+  enabled: boolean;
+};
+
 type CalEvent = {
   id: string;
   summary: string;
@@ -304,6 +313,13 @@ export default function App() {
   /** One-deep undo for the last destructive action. */
   const undoRef = useRef(new UndoStack());
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
+  /** Filing rules, and the new-rule form on the Rules page. */
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [ruleField, setRuleField] = useState<"from" | "to" | "subject">("from");
+  const [ruleText, setRuleText] = useState("");
+  const [ruleAction, setRuleAction] = useState<"move" | "star" | "read">("move");
+  const [ruleFolder, setRuleFolder] = useState("Archive");
+  const [ruleNote, setRuleNote] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -659,6 +675,114 @@ export default function App() {
   /** Keyboard resizing, so a divider is not mouse-only. */
   function nudgePane(key: PaneKey, delta: number): void {
     setPanes((current) => ({ ...current, [key]: clampPane(key, current[key] + delta) }));
+  }
+
+  /**
+   * Mute the thread of the right-clicked message.
+   *
+   * Muting files existing replies and keeps future ones out of the inbox. It
+   * does not delete or unsubscribe — the thread stays in Archive.
+   */
+  async function muteThread(): Promise<void> {
+    const target = menu ? messages.find((m) => m.id === menu.id) : null;
+    const subject = target?.subject ?? "";
+    if (!subject.trim()) {
+      setError("That message has no subject to mute on.");
+      return;
+    }
+    try {
+      const data = await api<{ filed: number; folders: Folder[] }>("/api/mute", {
+        method: "POST",
+        body: JSON.stringify({ subject }),
+      });
+      setFolders(data.folders);
+      await refreshMessages(folder);
+      setSendNote(`Muted. ${data.filed} message(s) filed.`);
+      window.setTimeout(() => setSendNote(null), 2600);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function refreshRules(): Promise<void> {
+    try {
+      const data = await api<{ rules: Rule[] }>("/api/rules");
+      setRules(data.rules ?? []);
+    } catch {
+      setRules([]);
+    }
+  }
+
+  async function addRule(): Promise<void> {
+    if (!ruleText.trim()) {
+      setRuleNote("Give the rule something to match on.");
+      return;
+    }
+    try {
+      const data = await api<{ rules: Rule[] }>("/api/rules", {
+        method: "POST",
+        body: JSON.stringify({
+          field: ruleField,
+          contains: ruleText.trim(),
+          action: ruleAction,
+          folder: ruleAction === "move" ? ruleFolder : undefined,
+        }),
+      });
+      setRules(data.rules ?? []);
+      setRuleText("");
+      setRuleNote(null);
+    } catch (e) {
+      setRuleNote(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function removeRule(id: string): Promise<void> {
+    try {
+      const data = await api<{ rules: Rule[] }>(`/api/rules/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      setRules(data.rules ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Apply every rule to the current folder, on demand. */
+  async function runRules(): Promise<void> {
+    try {
+      const data = await api<{ filed: number; folders: Folder[] }>("/api/rules/run", {
+        method: "POST",
+        body: JSON.stringify({ folder: folder === "__rules" ? "INBOX" : folder }),
+      });
+      setFolders(data.folders);
+      setRuleNote(`Filed ${data.filed} message(s).`);
+      await refreshMessages(folder === "__rules" ? "INBOX" : folder);
+    } catch (e) {
+      setRuleNote(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Snooze the selected messages until a preset time. */
+  async function snooze(ids: string[], preset: "later" | "tomorrow" | "week" | "weekend"): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      let folders: Folder[] = [];
+      for (const id of ids) {
+        const data = await api<{ folders: Folder[] }>("/api/snooze", {
+          method: "POST",
+          body: JSON.stringify({ id, preset }),
+        });
+        folders = data.folders;
+      }
+      if (folders.length) setFolders(folders);
+      setMessages((ms) => ms.filter((m) => !ids.includes(m.id)));
+      if (selectedId && ids.includes(selectedId)) setSelectedId(null);
+      setPicked([]);
+      setSendNote(`Snoozed ${ids.length} until ${preset}.`);
+      window.setTimeout(() => setSendNote(null), 2400);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   async function refreshContacts(): Promise<void> {
@@ -1515,6 +1639,18 @@ export default function App() {
           <span className="counts">{contacts.length > 0 ? <i>{contacts.length}</i> : null}</span>
         </button>
         <button
+          className={folder === "__rules" ? "folder on" : "folder"}
+          onClick={() => {
+            setFolder("__rules");
+            setSelectedId(null);
+            void refreshRules();
+          }}
+        >
+          <span className="fico" aria-hidden="true">⚙</span>
+          <span>Rules</span>
+          {rules.length > 0 ? <span className="counts"><i>{rules.length}</i></span> : null}
+        </button>
+        <button
           className={folder === "__agent" ? "folder on" : "folder"}
           onClick={() => {
             setFolder("__agent");
@@ -1548,7 +1684,36 @@ export default function App() {
       />
 
       <section className="list">
-        {folder === "__calendar" ? (
+        {folder === "__rules" ? (
+          <div className="rules-page">
+            <div className="rules-bar">
+              <strong>Filing rules</strong>
+              <button onClick={() => void runRules()}>Run on Inbox</button>
+            </div>
+            <p className="hint">
+              Rules file, flag or mark read. They can never reply or forward — that is structural,
+              not a setting.
+            </p>
+            {rules.length === 0 ? (
+              <p className="empty">No rules yet. Add one in the right pane.</p>
+            ) : (
+              rules.map((r) => (
+                <div className="rule-row" key={r.id}>
+                  <span className="rule-what">
+                    <strong>{r.field}</strong> contains <em>{r.contains}</em>
+                  </span>
+                  <span className="rule-then">
+                    → {r.action === "move" ? `move to ${r.folder}` : r.action === "star" ? "flag" : "mark read"}
+                  </span>
+                  <button className="subtle-danger" onClick={() => void removeRule(r.id)}>
+                    ✕
+                  </button>
+                </div>
+              ))
+            )}
+            {ruleNote ? <p className="note">{ruleNote}</p> : null}
+          </div>
+        ) : folder === "__calendar" ? (
           <div className="calendar">
             <div className="cal-bar">
               <button className="cal-nav" onClick={() => setCalAnchor((d) => shift(calView, d, -1))}>
@@ -1887,7 +2052,61 @@ export default function App() {
       />
 
       <main className="read">
-        {folder === "__calendar" ? (
+        {folder === "__rules" ? (
+          <div className="cal-detail">
+            <h1>New rule</h1>
+            <p className="hint">
+              When a message matches, do one thing to it. First matching rule wins.
+            </p>
+            <form
+              className="cal-new"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void addRule();
+              }}
+            >
+              <label>
+                When the
+                <select value={ruleField} onChange={(e) => setRuleField(e.target.value as typeof ruleField)}>
+                  <option value="from">sender</option>
+                  <option value="to">recipient</option>
+                  <option value="subject">subject</option>
+                </select>
+              </label>
+              <label>
+                contains
+                <input
+                  placeholder="newsletter@example.com"
+                  value={ruleText}
+                  onChange={(e) => setRuleText(e.target.value)}
+                />
+              </label>
+              <label>
+                then
+                <select value={ruleAction} onChange={(e) => setRuleAction(e.target.value as typeof ruleAction)}>
+                  <option value="move">move it to</option>
+                  <option value="star">flag it</option>
+                  <option value="read">mark it read</option>
+                </select>
+              </label>
+              {ruleAction === "move" ? (
+                <label>
+                  folder
+                  <select value={ruleFolder} onChange={(e) => setRuleFolder(e.target.value)}>
+                    {folders.map((f) => (
+                      <option key={f.name} value={f.name}>
+                        {f.name}
+                      </option>
+                    ))}
+                    <option value="Archive">Archive</option>
+                  </select>
+                </label>
+              ) : null}
+              <button type="submit">Add rule</button>
+              {ruleNote ? <p className="note">{ruleNote}</p> : null}
+            </form>
+          </div>
+        ) : folder === "__calendar" ? (
           <div className="cal-detail">
             {(() => {
               const ev = events.find((e) => e.id === calSelected);
@@ -2309,10 +2528,32 @@ export default function App() {
         />
       ) : null}
       {showKeys ? (
-        <div className="keys" role="dialog">
-          <strong>Keys</strong>
-          <p>c new · s star · e archive · # trash · ! spam · u unread · r draft · f forward</p>
-          <p>j/k move · n next unread · ? this list · Esc close</p>
+        <div className="keys" role="dialog" aria-label="Keyboard shortcuts">
+          <strong>Keyboard shortcuts</strong>
+          <div className="key-grid">
+            <span className="key-sec">Reading</span>
+            <span><kbd>j</kbd> <kbd>k</kbd> next / previous</span>
+            <span><kbd>n</kbd> next unread</span>
+            <span><kbd>u</kbd> mark unread</span>
+            <span><kbd>s</kbd> flag</span>
+            <span className="key-sec">Filing</span>
+            <span><kbd>e</kbd> archive</span>
+            <span><kbd>#</kbd> trash</span>
+            <span><kbd>!</kbd> spam</span>
+            <span>drag a row onto a folder</span>
+            <span className="key-sec">Writing</span>
+            <span><kbd>c</kbd> compose</span>
+            <span><kbd>r</kbd> reply draft</span>
+            <span><kbd>f</kbd> forward</span>
+            <span className="key-sec">Selecting</span>
+            <span><kbd>ctrl</kbd>+click one row</span>
+            <span><kbd>shift</kbd>+click a range</span>
+            <span>right-click for actions</span>
+            <span className="key-sec">Panels</span>
+            <span>drag a divider to resize</span>
+            <span>double-click it to reset</span>
+            <span><kbd>?</kbd> this list · <kbd>Esc</kbd> close</span>
+          </div>
           <button type="button" onClick={() => setShowKeys(false)}>
             Close
           </button>
@@ -2349,6 +2590,23 @@ export default function App() {
             </button>
             <button onClick={() => { void bulkAction(picked, "unstar"); setMenu(null); }}>
               Unflag
+            </button>
+            <button onClick={() => { void muteThread(); setMenu(null); }}>
+              🔕 Mute thread
+            </button>
+            <div className="ctx-sep" />
+            <span className="ctx-head">Snooze until</span>
+            <button onClick={() => { void snooze(picked, "later"); setMenu(null); }}>
+              ⏰ Later today
+            </button>
+            <button onClick={() => { void snooze(picked, "tomorrow"); setMenu(null); }}>
+              ⏰ Tomorrow 8am
+            </button>
+            <button onClick={() => { void snooze(picked, "weekend"); setMenu(null); }}>
+              ⏰ This weekend
+            </button>
+            <button onClick={() => { void snooze(picked, "week"); setMenu(null); }}>
+              ⏰ Next week
             </button>
             <div className="ctx-sep" />
             {folders
