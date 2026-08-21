@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://127.0.0.1:8787 ws://127.0.0.1:5173",
+      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost https: http:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://127.0.0.1:8787 ws://127.0.0.1:5173",
       "capabilities": ["default"]
     }
   },

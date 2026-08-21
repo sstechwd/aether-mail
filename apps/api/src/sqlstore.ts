@@ -18,6 +18,15 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
+export type StoredAttachment = {
+  part: number;
+  filename: string;
+  mimeType: string;
+  size: number;
+  contentId: string | null;
+  inline: boolean;
+};
+
 export type StoredMessage = {
   id: string;
   accountId: string;
@@ -28,13 +37,13 @@ export type StoredMessage = {
   date: string;
   unread: boolean;
   starred?: boolean;
-  body?: string;
+  body: string;
   html?: string;
   headers?: string;
   preview?: string;
   uid?: string;
   remoteFolder?: string;
-  attachments?: unknown[];
+  attachments?: StoredAttachment[];
   hiddenMedia?: number;
 };
 
@@ -83,6 +92,11 @@ export class SqlStore {
       );
       CREATE INDEX IF NOT EXISTS idx_msg_folder ON messages(account_id, folder, date DESC);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+      CREATE TABLE IF NOT EXISTS extra_folders (
+        account_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        PRIMARY KEY (account_id, name)
+      );
     `);
 
     // Full-text index. Contentless (content='') would need manual sync on every
@@ -205,18 +219,20 @@ export class SqlStore {
       date: String(row.date ?? ""),
       unread: Number(row.unread) === 1,
       starred: Number(row.starred) === 1,
+      // Callers type body as a string; the list path simply has it empty.
+      body: "",
       hiddenMedia: Number(row.hidden_media ?? 0),
     };
     if (row.preview != null) msg.preview = String(row.preview);
     if (row.attachments_json != null) {
       try {
-        msg.attachments = JSON.parse(String(row.attachments_json)) as unknown[];
+        msg.attachments = JSON.parse(String(row.attachments_json)) as StoredAttachment[];
       } catch {
         msg.attachments = [];
       }
     }
     if (withBody) {
-      if (row.body != null) msg.body = String(row.body);
+      msg.body = row.body != null ? String(row.body) : "";
       if (row.html != null) msg.html = String(row.html);
       if (row.headers != null) msg.headers = String(row.headers);
       if (row.uid != null) msg.uid = String(row.uid);
@@ -256,14 +272,27 @@ export class SqlStore {
     const rows = this.db
       .prepare(
         `SELECT folder AS name, COUNT(*) AS total, SUM(unread) AS unread
-         FROM messages WHERE account_id = ? GROUP BY folder ORDER BY folder`,
+         FROM messages WHERE account_id = ? GROUP BY folder`,
       )
       .all(accountId) as Row[];
-    return rows.map((r) => ({
-      name: String(r.name),
-      total: Number(r.total ?? 0),
-      unread: Number(r.unread ?? 0),
-    }));
+    const byName = new Map<string, FolderSummary>();
+    for (const r of rows) {
+      byName.set(String(r.name), {
+        name: String(r.name),
+        total: Number(r.total ?? 0),
+        unread: Number(r.unread ?? 0),
+      });
+    }
+    // Folders the user created that hold nothing yet must still be listed, or
+    // they disappear the moment their last message is moved out.
+    const extra = this.db
+      .prepare("SELECT name FROM extra_folders WHERE account_id = ?")
+      .all(accountId) as Row[];
+    for (const e of extra) {
+      const name = String(e.name);
+      if (!byName.has(name)) byName.set(name, { name, total: 0, unread: 0 });
+    }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
   markRead(id: string): void {
@@ -340,6 +369,66 @@ export class SqlStore {
       return [];
     }
   }
+
+  /**
+   * Folders with no mail in them yet.
+   *
+   * Folder summaries are derived by grouping messages, so an empty folder
+   * would otherwise vanish from the sidebar the moment its last message moved.
+   */
+  ensureFolder(accountId: string, name: string): void {
+    this.db
+      .prepare("INSERT OR IGNORE INTO extra_folders (account_id, name) VALUES (?, ?)")
+      .run(accountId, name);
+  }
+
+  /** Save a draft into Drafts. */
+  compose(input: { accountId: string; to: string; subject: string; body: string }): StoredMessage {
+    const draft: StoredMessage = {
+      id: `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      accountId: input.accountId,
+      folder: "Drafts",
+      from: "you@localhost",
+      to: input.to,
+      subject: input.subject,
+      date: new Date().toISOString(),
+      unread: false,
+      starred: false,
+      body: input.body,
+    };
+    this.loadFixture([draft]);
+    return { ...draft };
+  }
+
+  reply(id: string): StoredMessage {
+    const src = this.getMessage(id);
+    if (!src) throw new Error("message not found");
+    const angled = /<([^>]+)>/.exec(src.from);
+    const addr = (angled ? angled[1] : src.from).trim();
+    // Re: Re: Re: is how a subject line dies. Only add the prefix once.
+    const subject = /^re:/i.test(src.subject) ? src.subject : `Re: ${src.subject}`;
+    return this.compose({
+      accountId: src.accountId,
+      to: addr,
+      subject,
+      body: `\n\nOn ${src.date}, ${src.from} wrote:\n> ${(src.body ?? "").replace(/\n/g, "\n> ")}`,
+    });
+  }
+
+  forward(id: string): StoredMessage {
+    const src = this.getMessage(id);
+    if (!src) throw new Error("message not found");
+    const subject = /^fwd:/i.test(src.subject) ? src.subject : `Fwd: ${src.subject}`;
+    return this.compose({
+      accountId: src.accountId,
+      to: "",
+      subject,
+      body: `\n\n---------- Forwarded message ----------\nFrom: ${src.from}\nDate: ${src.date}\nSubject: ${src.subject}\n\n${src.body ?? ""}`,
+    });
+  }
+
+  /** Older stored rows may predate header capture; nothing to do here. */
+  fillMissingHeaders(_rows: StoredMessage[]): void {}
 
   /** Kept so callers written against the JSON store still compile. */
   save(): void {}

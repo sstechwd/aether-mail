@@ -89,11 +89,14 @@ describe("SqlStore", () => {
 
   it("keeps bodies out of the list query", () => {
     // The list pane only needs envelopes. Pulling every body to render 40 rows
-    // is what made the JSON store expensive.
+    // is what made the JSON store expensive. Body is typed as a string for
+    // callers, so the list path returns it empty rather than absent.
     store.loadFixture([MSG]);
     const row = store.listMessages("acc-1", "INBOX")[0];
     expect(row.subject).toBe("Quarterly numbers");
-    expect(row.body).toBeUndefined();
+    expect(row.body).toBe("");
+    // …and the full fetch still has it.
+    expect(store.getMessage("m1")?.body).toContain("Q3 figures");
   });
 
   it("summarises folders with unread counts", () => {
@@ -233,5 +236,52 @@ describe("SqlStore", () => {
     first.loadFixture([MSG]);
     first.close();
     expect(SqlStore.openFile(path).getMessage("m1")?.subject).toBe("Quarterly numbers");
+  });
+
+  describe("drafting", () => {
+    beforeEach(() => {
+      store.loadFixture([MSG]);
+    });
+
+    it("composes a draft into the Drafts folder", () => {
+      const draft = store.compose({
+        accountId: "acc-1",
+        to: "them@example.com",
+        subject: "Hello",
+        body: "text",
+      });
+      expect(draft.folder).toBe("Drafts");
+      expect(store.getMessage(draft.id)?.subject).toBe("Hello");
+    });
+
+    it("a reply addresses the sender and keeps the subject threaded", () => {
+      const draft = store.reply("m1");
+      expect(draft.to).toContain("priya@example.com");
+      expect(draft.subject.toLowerCase()).toContain("re:");
+      // Quoting the original is what makes a reply readable in the thread.
+      expect(draft.body).toContain("Q3 figures");
+    });
+
+    it("does not double up the Re: prefix on a reply to a reply", () => {
+      store.loadFixture([{ ...MSG, id: "r1", subject: "Re: Quarterly numbers" }]);
+      expect(store.reply("r1").subject).toBe("Re: Quarterly numbers");
+    });
+
+    it("a forward keeps the body but leaves the recipient empty", () => {
+      const draft = store.forward("m1");
+      expect(draft.subject.toLowerCase()).toContain("fwd:");
+      expect(draft.to).toBe("");
+      expect(draft.body).toContain("Q3 figures");
+    });
+
+    it("throws rather than inventing a draft for a message that is gone", () => {
+      expect(() => store.reply("nope")).toThrow();
+    });
+  });
+
+  it("ensureFolder makes an empty folder visible", () => {
+    store.loadFixture([MSG]);
+    store.ensureFolder("acc-1", "Archive");
+    expect(store.listFolders("acc-1").some((f) => f.name === "Archive")).toBe(true);
   });
 });

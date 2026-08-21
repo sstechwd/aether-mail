@@ -4,7 +4,7 @@ import path from "node:path";
 import { appRoot } from "./approot.js";
 import { FIXTURE_ACCOUNT, FIXTURE_MAIL } from "./fixture.js";
 import { runAgent, chatWithMail, type AgentSkill } from "./agent.js";
-import { MailStore } from "./store.js";
+import { SqlStore } from "./sqlstore.js";
 import { PROVIDERS } from "./providers.js";
 import { AccountBook, peekSecret } from "./accounts.js";
 import { corsHeaders, MAX_BODY_BYTES, publicAccount, rejectCrossSite } from "./security.js";
@@ -51,7 +51,19 @@ import { applyWorkflows, compileWorkflows, WorkflowBook } from "./workflows.js";
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
 const here = appRoot();
 const dataFile = process.env.AETHER_MAIL_FILE ?? path.join(here, "data/mail.json");
-const store = MailStore.openFile(dataFile);
+/*
+ * Mail lives in SQLite.
+ *
+ * The JSON store held every message — bodies, HTML and all — in memory and
+ * rewrote the whole file on any change: 7.9 MB for 246 messages, so roughly
+ * 325 MB at 10,000. SqlStore keeps bodies on disk, indexes them with FTS5, and
+ * migrates the old mail.json across exactly once on first run.
+ *
+ * AETHER_MAIL_FILE still points at the JSON path so the migration knows where
+ * to look; the database sits beside it.
+ */
+const dbFile = process.env.AETHER_MAIL_DB ?? path.join(here, "data/mail.db");
+const store = SqlStore.openFile(dbFile, dataFile);
 if (store.listFolders(FIXTURE_ACCOUNT.id).length === 0) {
   store.loadFixture(FIXTURE_MAIL);
   store.save();

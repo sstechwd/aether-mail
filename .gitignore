@@ -41,6 +41,12 @@ apps/desktop/sidecar/*.blob
 *.db
 data/*.json
 data/*.jsonl
+# SQLite mail store — real mailbox contents. The repo is public; these must
+# never be committed. -wal/-shm are the WAL sidecar files.
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.bak
 
 # Hermes local plans may be committed; caches may not
 .hermes/cache/
