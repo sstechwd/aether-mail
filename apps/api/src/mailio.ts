@@ -29,6 +29,8 @@ export function buildMailCliArgs(input: {
   part?: number;
   /** Seconds to hold an IDLE connection open before giving up. */
   timeout?: number;
+  /** Fetch only UIDs above this. Omit for a full window. */
+  sinceUid?: number;
 }): string[] {
   const args = [input.action, "--secret-ref", input.secretRef];
   if (input.host) args.push("--host", input.host);
@@ -37,6 +39,7 @@ export function buildMailCliArgs(input: {
   if (input.username) args.push("--user", input.username);
   if (input.folder) args.push("--folder", input.folder);
   if (input.timeout) args.push("--timeout", String(input.timeout));
+  if (input.sinceUid) args.push("--since-uid", String(input.sinceUid));
   if (input.smtpHost) args.push("--smtp-host", input.smtpHost);
   if (input.smtpPort) args.push("--smtp-port", String(input.smtpPort));
   if (input.from) args.push("--from", input.from);
@@ -65,6 +68,10 @@ export type MailCliResult = {
   error?: string;
   /** For `idle`: why the wait ended — "activity" means fetch now. */
   woke?: "activity" | "timeout";
+  /** Mailbox UIDVALIDITY, for detecting a server-side renumber. */
+  uid_validity?: number;
+  /** Highest UID returned; undefined when nothing new arrived. */
+  highest_uid?: number;
   folders?: string[];
   messages?: Array<{
     id: string;

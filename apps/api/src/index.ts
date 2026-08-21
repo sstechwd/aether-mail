@@ -46,6 +46,7 @@ import { parseProposal, describeProposal, PROPOSAL_SCHEMA } from "./agent-tools.
 import { providerOAuth, buildAuthUrl, exchangeCode, refreshAccessToken } from "./oauth.js";
 import { TokenCache } from "./tokencache.js";
 import { ensureFreshToken, type RefreshDeps } from "./tokenrefresh.js";
+import { SyncState, planFetch } from "./syncstate.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -103,6 +104,12 @@ const muteBook = MuteBook.openFile(path.join(here, "data/mute.json"));
  * logic stays unit-testable without a network or a keyring.
  */
 const tokenCache = TokenCache.openFile(path.join(here, "data/tokens.json"));
+
+/*
+ * Where each folder's sync got to, so a fetch asks only for what is new
+ * instead of pulling the newest 40 with full bodies every few minutes.
+ */
+const syncState = SyncState.openFile(path.join(here, "data/syncstate.json"));
 
 const refreshDeps: RefreshDeps = {
   clientIdFor: (provider) => process.env[`AETHER_OAUTH_CLIENT_${provider.toUpperCase()}`] ?? "",
@@ -1805,6 +1812,19 @@ const server = http.createServer(async (req, res) => {
       let total = 0;
       let firstError: string | undefined;
       for (const target of targets) {
+        /*
+         * Ask only for what is new.
+         *
+         * The server's UIDVALIDITY only comes back WITH the response, so the
+         * order is: fetch incrementally based on what we knew, then check what
+         * the server said. If it renumbered, everything we just got is
+         * untrustworthy — drop the stored position and refetch fully next
+         * pass. Asking for UID 901+ in a mailbox that restarted at 1 returns
+         * nothing forever, with no error to notice.
+         */
+        const known = syncState.get(account.id, target.canonical);
+        const plan = planFetch(known, known?.uidValidity ?? 0);
+
         const fetched = await runMailCli(
           buildMailCliArgs({
             action: "fetch",
@@ -1814,6 +1834,7 @@ const server = http.createServer(async (req, res) => {
             tls: account.imap_tls,
             username: account.username,
             folder: target.remote,
+            sinceUid: plan.sinceUid,
           }),
         );
         if (!fetched.ok) {
@@ -1822,6 +1843,27 @@ const server = http.createServer(async (req, res) => {
           continue;
         }
         total += fetched.messages?.length ?? 0;
+
+        /*
+         * Record where we got to, now that the server has told us its
+         * UIDVALIDITY. A renumber invalidates the position we just used, so
+         * reset instead of recording — the next pass then does a full window.
+         */
+        const serverValidity = fetched.uid_validity ?? 0;
+        if (known && serverValidity && serverValidity !== known.uidValidity) {
+          syncState.reset(account.id, target.canonical);
+          audit.append({
+            actor: "workflow",
+            action: "sync.uidvalidity_changed",
+            detail: `${target.canonical}: ${known.uidValidity} -> ${serverValidity}`,
+          });
+        } else if (serverValidity && fetched.highest_uid) {
+          syncState.record(account.id, target.canonical, {
+            uidValidity: serverValidity,
+            highestUid: fetched.highest_uid,
+          });
+        }
+
         store.loadFixture(
           (fetched.messages ?? []).map((m) => ({
             id: `${account.id}-${target.canonical}-${m.id}`,

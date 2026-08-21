@@ -33,6 +33,12 @@ struct JsonOut {
     messages: Option<Vec<Fetched>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     part: Option<PartOut>,
+    /// The mailbox's UIDVALIDITY, so the caller can detect renumbering.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uid_validity: Option<u32>,
+    /// Highest UID in this response; the caller resumes above it next time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    highest_uid: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -99,6 +105,8 @@ fn main() -> ExitCode {
                     folders: None,
                     messages: None,
                     part: None,
+                    uid_validity: None,
+                    highest_uid: None,
                 })
                 .unwrap_or_else(|_| "{\"ok\":false,\"error\":\"cli\"}".into())
             );
@@ -177,6 +185,8 @@ fn secret_put(flags: &HashMap<String, String>) -> Result<(), String> {
             folders: None,
             messages: None,
             part: None,
+            uid_validity: None,
+            highest_uid: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -194,6 +204,8 @@ fn secret_delete(flags: &HashMap<String, String>) -> Result<(), String> {
             folders: None,
             messages: None,
             part: None,
+            uid_validity: None,
+            highest_uid: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -235,6 +247,8 @@ fn probe(flags: &HashMap<String, String>) -> Result<(), String> {
             folders: Some(folders),
             messages: None,
             part: None,
+            uid_validity: None,
+            highest_uid: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -261,10 +275,33 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
     };
     validate_probe(&ep, &user, &secret).map_err(|e| e.to_string())?;
     let mut session = imap_login(&host, port, &tls, &user, &secret)?;
+
+    /*
+     * Incremental fetch.
+     *
+     * Refetching the newest 40 messages with full bodies every few minutes is
+     * pure waste on a mailbox that has not changed. With --since-uid we ask
+     * only for what is above the highest UID we already hold.
+     *
+     * Whether that is safe is the caller's decision: it compares the
+     * UIDVALIDITY reported here against the one it stored, and falls back to a
+     * full window when the server has renumbered. That check belongs with the
+     * stored state — this process has no memory.
+     */
+    let since_uid: Option<u32> = flags.get("since-uid").and_then(|v| v.parse().ok());
+    let mut uid_validity: Option<u32> = None;
+    let mut use_uid_range = false;
     let mut seq = "1:40".to_string();
+
     if let Ok(mailbox) = session.select(&folder) {
+        uid_validity = mailbox.uid_validity;
         let exists = mailbox.exists;
-        if exists == 0 {
+
+        if let Some(since) = since_uid.filter(|u| *u > 0) {
+            // Everything above what we hold. Empty is the normal cheap case.
+            seq = format!("{}:*", since + 1);
+            use_uid_range = true;
+        } else if exists == 0 {
             let _ = session.logout();
             println!(
                 "{}",
@@ -274,25 +311,61 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
                     folders: None,
                     messages: Some(Vec::new()),
                     part: None,
+                    uid_validity: None,
+                    highest_uid: None,
                 })
                 .map_err(|e| e.to_string())?
             );
             return Ok(());
         }
-        let start = if exists > 40 { exists - 39 } else { 1 };
-        seq = format!("{start}:{exists}");
+        // Guarded: this is the newest-40 SEQUENCE window and it must not
+        // clobber an incremental UID range. Running it unconditionally is
+        // exactly the bug that silently replaced "100151:*" with "2062:2101"
+        // and made every incremental fetch return nothing.
+        if !use_uid_range {
+            let start = if exists > 40 { exists - 39 } else { 1 };
+            seq = format!("{start}:{exists}");
+        }
     }
-    let fetches = session
-        .fetch(
+
+    // uid_fetch reads the range as UIDs; fetch reads it as sequence numbers.
+    // Using the wrong one silently returns the wrong messages.
+    let fetches = if use_uid_range {
+        session.uid_fetch(
+            &seq,
+            "(UID FLAGS BODY.PEEK[HEADER] BODY.PEEK[TEXT]<0.262144>)",
+        )
+    } else {
+        session.fetch(
             &seq,
             // Full header + body text: a multipart body cannot be decoded without
             // the Content-Type boundary, and truncating mid-part corrupts base64.
             "(UID FLAGS BODY.PEEK[HEADER] BODY.PEEK[TEXT]<0.262144>)",
         )
-        .map_err(|e| e.to_string())?;
+    }
+    .map_err(|e| e.to_string())?;
     let mut messages = Vec::new();
+    // Highest UID in this response, so the caller resumes above it.
+    let mut highest_seen: u32 = 0;
     for item in fetches.iter() {
         let uid = item.uid.unwrap_or(0);
+        /*
+         * Drop anything at or below the resume point.
+         *
+         * IMAP clamps a range like "100158:*" to the LAST message when nothing
+         * sits above it, so an up-to-date mailbox still returns one message —
+         * and we would refetch it, with its full body, on every single cycle
+         * forever. This is standard server behaviour, not a bug, so the client
+         * has to filter.
+         */
+        if let Some(since) = since_uid {
+            if uid <= since {
+                continue;
+            }
+        }
+        if uid > highest_seen {
+            highest_seen = uid;
+        }
         let header = item.header().unwrap_or(b"");
         let header_txt = String::from_utf8_lossy(header);
         let text = item.text().unwrap_or(b"");
@@ -337,6 +410,14 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
             folders: None,
             messages: Some(messages),
             part: None,
+            uid_validity,
+            // None when nothing came back, which leaves the caller's stored
+            // position untouched rather than rewinding it.
+            highest_uid: if highest_seen > 0 {
+                Some(highest_seen)
+            } else {
+                None
+            },
         })
         .map_err(|e| e.to_string())?
     );
@@ -405,6 +486,8 @@ fn fetch_part(flags: &HashMap<String, String>) -> Result<(), String> {
                 mime_type: meta.mime_type.clone(),
                 data: base64::engine::general_purpose::STANDARD.encode(&bytes),
             }),
+            uid_validity: None,
+            highest_uid: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -591,6 +674,8 @@ fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
             folders: None,
             messages: None,
             part: None,
+            uid_validity: None,
+            highest_uid: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -722,6 +807,9 @@ fn idle_wait(flags: &HashMap<String, String>) -> Result<(), String> {
         Err(_) => "timeout",
     };
 
-    println!("{}", serde_json::json!({ "ok": true, "woke": woke, "folder": folder }));
+    println!(
+        "{}",
+        serde_json::json!({ "ok": true, "woke": woke, "folder": folder })
+    );
     Ok(())
 }

@@ -57,3 +57,4 @@ data/*.bak
 # Profile backups contain real mailbox contents.
 backups/
 data/tokens.json
+data/syncstate.json
