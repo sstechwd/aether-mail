@@ -1,6 +1,6 @@
 # STATUS — Aether Mail
 
-**Updated:** 2026-08-21 · `main` and `dev` at `478f62b` · repo is **PUBLIC** (MIT)
+**Updated:** 2026-08-21 · `main` and `dev` at `3a488ed` · repo is **PUBLIC** (MIT)
 
 ## Run it
 
@@ -44,10 +44,25 @@ multipart/alternative so plain-text readers still get something readable.
 folders, filing rules, snooze, mute thread, an Outbox with scheduled send that
 survives closing the app. Right-click a folder you made to remove it.
 
+**Reading a thread reads as a thread.** The reading pane shows the whole
+conversation, oldest first — the order it happened in. The list stays newest
+first, because there you are scanning rather than reading.
+
+**Attachments open in-app.** Images, PDFs and text preview inline in a
+sandboxed frame; everything else downloads as before. What may be previewed is
+decided server-side from an allow-list, and a file whose name disagrees with
+its declared type never previews.
+
+**Newsletters can be stopped, not just filed.** ⊘ Unsubscribe appears on any
+message whose sender advertised a safe https unsubscribe. A sender who only
+accepts unsubscribe by email is deliberately NOT actioned — that would mean
+sending mail on your behalf.
+
 **The agent can build things.** ⚡ Automate this on any message: it proposes a
-rule or template, you see it in plain English, one click creates it. It
-physically cannot propose sending or deleting — those actions are not in the
-schema.
+rule or template, you see it in plain English, one click creates it. The Rules
+page also shows what it noticed across the whole inbox — "19 messages from
+Amazon, one rule files them all" — and, separately, what it deliberately did
+NOT suggest and why. It physically cannot propose sending or deleting.
 
 **Your data is yours** — Settings → Your data → Back up now. The archive is a
 SQLite file plus JSON; `sqlite3 mail.db` opens it with Aether uninstalled.
@@ -67,13 +82,12 @@ Press `?` for the shortcut sheet. Five themes in Settings.
 
 ## Next
 
-1. Propose automations from a whole folder, not one message — "these 40
-   newsletters share a sender, one rule files them all"
-2. More proposal types: mute, snooze, unsubscribe
-3. Conversation view in the reading pane
-4. Attachment previews
+1. More agent proposal types: mute and snooze (unsubscribe already ships as a
+   button, and each new one is a single validated entry in the same allow-list)
+2. Batch approval — show five suggestions, tick the ones you want
+3. IDLE on more than just INBOX
 
 ## Tests
 
-402 API · 47 web · 24 Rust suites. `npm run test` and `cargo test --workspace`.
+495 API · 47 web · 24 Rust suites. `npm run test` and `cargo test --workspace`.
 Every performance claim above was measured against the real mailbox.
