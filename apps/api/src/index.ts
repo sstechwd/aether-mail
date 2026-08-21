@@ -47,6 +47,7 @@ import { providerOAuth, buildAuthUrl, exchangeCode, refreshAccessToken } from ".
 import { TokenCache } from "./tokencache.js";
 import { ensureFreshToken, type RefreshDeps } from "./tokenrefresh.js";
 import { SyncState, planFetch } from "./syncstate.js";
+import { findBulkSenders } from "./bulksenders.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -1053,6 +1054,48 @@ const server = http.createServer(async (req, res) => {
       });
       page(stored.ok ? "Signed in. Return to Aether." : "Signed in, but storing the token failed.");
       return;
+    }
+
+    /*
+     * Folder-level automation candidates.
+     *
+     * "These 33 messages share a sender, one rule files them all" is far more
+     * useful than a suggestion about the one message you happen to have open.
+     *
+     * Computed, not generated: counting senders is arithmetic, and a local 7B
+     * model would do it slower and occasionally wrong. No LLM is involved, so
+     * this also works with no model configured at all.
+     *
+     * The domains the user has WRITTEN TO are excluded — someone who mails you
+     * a lot and whom you reply to is a correspondent, not a newsletter, and
+     * "sends a lot" is exactly the signal a naive version would key on.
+     */
+    if (req.method === "GET" && url.pathname === "/api/agent/folder-suggestions") {
+      const folder = asString(url.searchParams.get("folder") ?? "INBOX", "INBOX", 100);
+
+      const corresponded = new Set<string>();
+      for (const sent of store.listMessages(activeAccountId, "Sent", "newest")) {
+        for (const piece of (sent.to ?? "").split(",")) {
+          const angled = /<([^>]+)>/.exec(piece);
+          const addr = (angled ? angled[1] : piece).trim().toLowerCase();
+          const domain = addr.includes("@") ? addr.split("@").pop() ?? "" : "";
+          if (domain) corresponded.add(domain);
+        }
+      }
+
+      const candidates = findBulkSenders(
+        store.listMessages(activeAccountId, folder, "newest").map((m) => ({
+          from: m.from,
+          subject: m.subject,
+          unread: m.unread,
+        })),
+        {
+          corresponded,
+          alreadyRuled: ruleBook.list().map((r) => r.contains),
+        },
+      );
+
+      return json(res, 200, { folder, candidates }, origin);
     }
 
     /*

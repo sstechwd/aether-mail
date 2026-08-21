@@ -2926,3 +2926,49 @@ textarea:focus-visible {
 }
 
 .oauth-btn:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* ===== Folder-level automation suggestions =========================== */
+.suggests {
+  margin: 12px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.suggests-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.suggests-head .hint { margin: 0; font-size: 12px; }
+.suggest-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.suggest-row:first-of-type { border-top: 0; }
+.suggest-what { color: var(--ink-soft); font-size: 13px; }
+.suggest-what strong { color: var(--ink); }
+.suggest-what em { color: var(--ink); font-style: normal; }
+.suggest-unread {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+}
+.suggest-act { display: flex; gap: 6px; flex: 0 0 auto; }
+.suggest-act .ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  padding: 4px 8px;
+}
+.suggest-act .ghost:hover { color: var(--ink); border-color: var(--line); }
