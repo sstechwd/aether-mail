@@ -51,6 +51,7 @@ import { findBulkSenders } from "./bulksenders.js";
 import { parseUnsubscribe } from "./unsubscribe.js";
 import { buildConversation } from "./conversation.js";
 import { previewKind } from "./attachpreview.js";
+import { fetchFolderFor } from "./remotefolder.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -255,7 +256,7 @@ async function loadInlineParts(
         port: account.imap_port,
         tls: account.imap_tls,
         username: account.username,
-        folder: message.folder || "INBOX",
+        folder: fetchFolderFor(message),
         uid: message.uid,
         part: part.part,
       }),
@@ -867,7 +868,7 @@ const server = http.createServer(async (req, res) => {
           port: account.imap_port,
           tls: account.imap_tls,
           username: account.username,
-          folder: message.folder || "INBOX",
+          folder: fetchFolderFor(message),
           uid: message.uid,
           part: meta.part,
         }),
