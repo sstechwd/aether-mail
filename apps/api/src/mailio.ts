@@ -3,7 +3,14 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { appRoot } from "./approot.js";
 
-export type MailCliAction = "probe" | "fetch" | "part" | "send" | "secret-put" | "secret-delete";
+export type MailCliAction =
+  | "probe"
+  | "fetch"
+  | "part"
+  | "send"
+  | "idle"
+  | "secret-put"
+  | "secret-delete";
 
 export function buildMailCliArgs(input: {
   action: MailCliAction;
@@ -20,6 +27,8 @@ export function buildMailCliArgs(input: {
   subject?: string;
   uid?: string;
   part?: number;
+  /** Seconds to hold an IDLE connection open before giving up. */
+  timeout?: number;
 }): string[] {
   const args = [input.action, "--secret-ref", input.secretRef];
   if (input.host) args.push("--host", input.host);
@@ -27,6 +36,7 @@ export function buildMailCliArgs(input: {
   if (input.tls) args.push("--tls", input.tls);
   if (input.username) args.push("--user", input.username);
   if (input.folder) args.push("--folder", input.folder);
+  if (input.timeout) args.push("--timeout", String(input.timeout));
   if (input.smtpHost) args.push("--smtp-host", input.smtpHost);
   if (input.smtpPort) args.push("--smtp-port", String(input.smtpPort));
   if (input.from) args.push("--from", input.from);
@@ -53,6 +63,8 @@ export function findMailCli(): string | null {
 export type MailCliResult = {
   ok: boolean;
   error?: string;
+  /** For `idle`: why the wait ended — "activity" means fetch now. */
+  woke?: "activity" | "timeout";
   folders?: string[];
   messages?: Array<{
     id: string;

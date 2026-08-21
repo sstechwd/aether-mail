@@ -133,7 +133,10 @@ fn run() -> Result<(), String> {
         "fetch" => fetch_mail(&flags),
         "part" => fetch_part(&flags),
         "send" => send_mail(&flags),
-        _ => Err("usage: aether-cli secret-put|secret-delete|probe|fetch|part|send [flags]".into()),
+        "idle" => idle_wait(&flags),
+        _ => Err(
+            "usage: aether-cli secret-put|secret-delete|probe|fetch|part|send|idle [flags]".into(),
+        ),
     }
 }
 
@@ -665,4 +668,60 @@ fn header_field(headers: &str, name: &str) -> String {
         }
     }
     String::new()
+}
+
+/// Wait for the server to say something changed, then exit.
+///
+/// This is IMAP IDLE (RFC 2177): the connection stays open and the server
+/// pushes a notification the moment mail arrives, instead of the client asking
+/// every few minutes. It is the difference between mail appearing instantly
+/// and mail appearing "within five minutes".
+///
+/// One shot on purpose. The process blocks, prints why it woke, and exits, so
+/// the supervising API keeps ownership of the retry policy rather than this
+/// binary growing a reconnect loop of its own. A crash here costs one restart,
+/// not a stuck daemon.
+///
+/// The 29-minute cap is from the RFC: servers may drop an IDLE after 30
+/// minutes, so a client must re-issue before that. Most callers pass something
+/// far shorter.
+fn idle_wait(flags: &HashMap<String, String>) -> Result<(), String> {
+    let host = flags.get("host").cloned().unwrap_or_default();
+    let port: u16 = flags
+        .get("port")
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(993);
+    let tls = flags
+        .get("tls")
+        .cloned()
+        .unwrap_or_else(|| "ssl".to_string());
+    let user = flags.get("user").cloned().unwrap_or_default();
+    let secret = load_secret(flags)?;
+    let folder = flags
+        .get("folder")
+        .cloned()
+        .unwrap_or_else(|| "INBOX".to_string());
+
+    let requested: u64 = flags
+        .get("timeout")
+        .and_then(|t| t.parse().ok())
+        .unwrap_or(600);
+    let timeout = std::time::Duration::from_secs(requested.min(29 * 60));
+
+    let mut session = imap_login(&host, port, &tls, &user, &secret)?;
+    session.select(&folder).map_err(|e| e.to_string())?;
+
+    let mut handle = session.idle().map_err(|e| e.to_string())?;
+    // Some servers go quiet and drop an idle connection that never speaks.
+    handle.set_keepalive(std::time::Duration::from_secs(5 * 60));
+
+    let woke = match handle.wait_timeout(timeout) {
+        Ok(()) => "activity",
+        // A timeout is a normal, expected outcome, not a failure: it just
+        // means nothing arrived in the window and the caller should loop.
+        Err(_) => "timeout",
+    };
+
+    println!("{}", serde_json::json!({ "ok": true, "woke": woke, "folder": folder }));
+    Ok(())
 }

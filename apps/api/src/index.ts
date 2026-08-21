@@ -440,6 +440,78 @@ if (AUTO_SYNC_MS > 0) {
   const firstSync = setTimeout(() => void autoSyncAll(), 20_000);
   if (typeof firstSync.unref === "function") firstSync.unref();
 }
+
+/*
+ * IMAP IDLE — push instead of polling.
+ *
+ * The interval above is the floor, not the mechanism. IDLE (RFC 2177) holds a
+ * connection open and the server speaks the moment mail arrives, so mail shows
+ * up immediately rather than "within five minutes".
+ *
+ * The CLI does one wait per invocation and exits. The loop lives here so the
+ * retry policy stays in one place and a crashed child costs one restart rather
+ * than a wedged daemon.
+ *
+ * Failures back off instead of hammering: a server that refuses IDLE, or a
+ * laptop that just closed its lid, must not become a reconnect storm at
+ * someone's provider. The polling timer keeps running underneath, so if IDLE
+ * never works the app degrades to exactly its previous behaviour.
+ */
+const IDLE_ENABLED = process.env.AETHER_IDLE !== "0";
+const IDLE_WINDOW_S = Number(process.env.AETHER_IDLE_WINDOW ?? 600);
+const idleStopped = new Set<string>();
+
+async function idleLoop(accountId: string): Promise<void> {
+  let backoffMs = 5_000;
+
+  for (;;) {
+    if (idleStopped.has(accountId)) return;
+    const account = accounts.get(accountId);
+    if (!account) return;
+
+    try {
+      const fresh = await ensureFreshToken(account, tokenCache, refreshDeps);
+      if (!fresh.ok) {
+        // Signed out: stop rather than loop on a credential that cannot work.
+        console.warn(`idle: ${fresh.reason}`);
+        return;
+      }
+
+      const result = await runMailCli(
+        buildMailCliArgs({
+          action: "idle",
+          secretRef: account.secret_ref,
+          host: account.imap_host,
+          port: account.imap_port,
+          tls: account.imap_tls,
+          username: account.username,
+          folder: "INBOX",
+          timeout: IDLE_WINDOW_S,
+        }),
+      );
+
+      if (!result.ok) throw new Error(result.error ?? "idle failed");
+      backoffMs = 5_000;
+
+      // Woke on activity: fetch. Woke on timeout: loop and idle again.
+      if (result.woke === "activity") {
+        await autoSyncAll();
+      }
+    } catch (e) {
+      console.warn(`idle: ${e instanceof Error ? e.message : String(e)}`);
+      await new Promise((r) => setTimeout(r, backoffMs));
+      // Cap at five minutes: past that the polling timer covers us anyway.
+      backoffMs = Math.min(backoffMs * 2, 5 * 60_000);
+    }
+  }
+}
+
+if (IDLE_ENABLED) {
+  const startIdle = setTimeout(() => {
+    for (const account of accounts.list()) void idleLoop(account.id);
+  }, 25_000);
+  if (typeof startIdle.unref === "function") startIdle.unref();
+}
 // Catch anything that came due while the app was closed.
 setTimeout(() => {
   void drainOutbox();
