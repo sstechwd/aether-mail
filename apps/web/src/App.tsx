@@ -320,6 +320,9 @@ export default function App() {
   const [ruleAction, setRuleAction] = useState<"move" | "star" | "read">("move");
   const [ruleFolder, setRuleFolder] = useState("Archive");
   const [ruleNote, setRuleNote] = useState<string | null>(null);
+  /** Unified inbox rows, and whether it is worth showing at all. */
+  const [unified, setUnified] = useState<(Message & { accountEmail?: string; rowKey?: string })[]>([]);
+  const [unifiedUseful, setUnifiedUseful] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -411,6 +414,13 @@ export default function App() {
       /* ignore */
     }
   }, [folder, sort, threaded]);
+
+  // Ask once whether a unified inbox is worth offering. With one account it
+  // is a duplicate of the inbox, so the nav entry stays hidden.
+  useEffect(() => {
+    void refreshUnified();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!selectedId) {
@@ -704,6 +714,27 @@ export default function App() {
       window.setTimeout(() => setSendNote(null), 2600);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /**
+   * Load the unified inbox.
+   *
+   * `meaningful` is false with a single account, where this view would be an
+   * exact copy of the inbox — so the nav entry stays hidden rather than
+   * pretending to do something.
+   */
+  async function refreshUnified(): Promise<void> {
+    try {
+      const data = await api<{
+        messages: (Message & { accountEmail?: string; rowKey?: string })[];
+        meaningful: boolean;
+      }>("/api/unified");
+      setUnified(data.messages ?? []);
+      setUnifiedUseful(Boolean(data.meaningful));
+    } catch {
+      setUnified([]);
+      setUnifiedUseful(false);
     }
   }
 
@@ -1645,6 +1676,25 @@ export default function App() {
           <span>Contacts</span>
           <span className="counts">{contacts.length > 0 ? <i>{contacts.length}</i> : null}</span>
         </button>
+        {unifiedUseful ? (
+          <button
+            className={folder === "__unified" ? "folder on" : "folder"}
+            onClick={() => {
+              setFolder("__unified");
+              setSelectedId(null);
+              void refreshUnified();
+            }}
+          >
+            <span className="fico" aria-hidden="true">⊞</span>
+            <span>All inboxes</span>
+            <span className="counts">
+              {unified.filter((m) => m.unread).length > 0 ? (
+                <b>{unified.filter((m) => m.unread).length}</b>
+              ) : null}
+              <i>{unified.length}</i>
+            </span>
+          </button>
+        ) : null}
         <button
           className={folder === "__rules" ? "folder on" : "folder"}
           onClick={() => {
@@ -1691,7 +1741,32 @@ export default function App() {
       />
 
       <section className="list">
-        {folder === "__rules" ? (
+        {folder === "__unified" ? (
+          <div className="unified">
+            {unified.length === 0 ? (
+              <p className="empty">Nothing in any inbox.</p>
+            ) : (
+              unified.map((m) => (
+                <button
+                  key={m.rowKey ?? m.id}
+                  className={`row${m.id === selectedId ? " on" : ""}${m.unread ? " unread" : ""}`}
+                  onClick={() => {
+                    setSelectedId(m.id);
+                    setAgent(null);
+                  }}
+                >
+                  <span className="from">
+                    {m.starred ? "★ " : ""}
+                    {m.from.replace(/<[^>]+>/, "").trim()}
+                  </span>
+                  <span className="when">{formatWhen(m.date)}</span>
+                  <span className="subj">{m.subject || "(no subject)"}</span>
+                  {m.accountEmail ? <span className="acct-badge">{m.accountEmail}</span> : null}
+                </button>
+              ))
+            )}
+          </div>
+        ) : folder === "__rules" ? (
           <div className="rules-page">
             <div className="rules-bar">
               <strong>Filing rules</strong>

@@ -40,6 +40,7 @@ import { ImagePolicy } from "./imagepolicy.js";
 import { RuleBook } from "./rules.js";
 import { SnoozeBook, snoozeUntil, type SnoozePreset } from "./snooze.js";
 import { MuteBook } from "./mute.js";
+import { mergeAccounts } from "./unified.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -752,6 +753,38 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(url.pathname.slice("/api/calendar/".length));
       const ok = calendar.remove(id);
       return json(res, ok ? 200 : 404, { removed: ok }, origin);
+    }
+
+    /**
+     * Unified inbox: every account's INBOX in one date-ordered list.
+     *
+     * `meaningful` tells the client whether to show the nav entry at all —
+     * with one account this view is identical to the inbox, and a menu item
+     * that appears to do nothing is worse than no menu item.
+     */
+    if (req.method === "GET" && url.pathname === "/api/unified") {
+      const all = accounts.list();
+      const merged = mergeAccounts(
+        all.map((acct) => ({
+          accountId: acct.id,
+          email: acct.email,
+          messages: store.listMessages(acct.id, "INBOX", "newest").map((m) => ({
+            id: m.id,
+            from: m.from,
+            subject: m.subject,
+            date: m.date,
+            unread: m.unread,
+            starred: m.starred,
+            preview: m.preview,
+          })),
+        })),
+      );
+      return json(
+        res,
+        200,
+        { messages: merged, accounts: all.length, meaningful: all.length > 1 },
+        origin,
+      );
     }
 
     // Muted threads. A muted thread's new replies arrive read and archived

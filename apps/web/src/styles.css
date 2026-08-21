@@ -2873,3 +2873,14 @@ textarea:focus-visible {
 
 .compose-body a { color: var(--accent-soft); }
 .compose-body ul, .compose-body ol { margin: 6px 0; padding-left: 22px; }
+
+/* Which mailbox a unified-inbox row belongs to. */
+.acct-badge {
+  grid-area: peek;
+  justify-self: start;
+  padding: 1px 6px;
+  background: var(--accent-dim);
+  border-radius: 3px;
+  color: var(--accent-soft);
+  font-size: 10.5px;
+}
