@@ -50,6 +50,7 @@ import { SyncState, planFetch } from "./syncstate.js";
 import { findBulkSenders } from "./bulksenders.js";
 import { parseUnsubscribe } from "./unsubscribe.js";
 import { buildConversation } from "./conversation.js";
+import { previewKind } from "./attachpreview.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -847,6 +848,79 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // Download one attachment. Bytes come straight from the user's IMAP server
+    // via aether-cli; the API never stores them on disk.
+    if (req.method === "GET" && /^\/api\/messages\/.+\/parts\/\d+$/.test(url.pathname)) {
+      const [, rawId, rawPart] = url.pathname.match(/^\/api\/messages\/(.+)\/parts\/(\d+)$/) ?? [];
+      const message = store.getMessage(decodeURIComponent(rawId ?? ""));
+      if (!message) return notFound(res);
+      const account = accounts.get(message.accountId);
+      const meta = (message.attachments ?? []).find((a) => a.part === Number(rawPart));
+      if (!account || !meta || !message.uid) {
+        return json(res, 404, { error: "no_such_part" }, origin);
+      }
+      const result = await runMailCli(
+        buildMailCliArgs({
+          action: "part",
+          secretRef: account.secret_ref,
+          host: account.imap_host,
+          port: account.imap_port,
+          tls: account.imap_tls,
+          username: account.username,
+          folder: message.folder || "INBOX",
+          uid: message.uid,
+          part: meta.part,
+        }),
+      );
+      if (!result.ok || !result.part) {
+        return json(res, 502, { error: "part_failed", message: result.error }, origin);
+      }
+      const bytes = Buffer.from(result.part.data, "base64");
+
+      /*
+       * ?preview=1 renders in-app instead of downloading.
+       *
+       * The content-type is decided HERE from an allow-list, never echoed
+       * from the sender's claim, and only for types we can display safely.
+       * Anything else still downloads, so a mislabelled executable cannot
+       * talk the webview into rendering it.
+       *
+       * `inline` disposition + `nosniff` + a CSP that forbids scripts means
+       * even a hostile file that reaches this path cannot execute.
+       */
+      const wantsPreview = url.searchParams.get("preview") === "1";
+      const kind = previewKind(meta.mimeType ?? "", meta.filename ?? "");
+      if (wantsPreview && kind !== "none") {
+        const safeType =
+          kind === "pdf"
+            ? "application/pdf"
+            : kind === "text"
+              ? "text/plain; charset=utf-8"
+              : (meta.mimeType ?? "").split(";")[0].trim().toLowerCase();
+        res.writeHead(200, {
+          "content-type": safeType,
+          "content-length": String(bytes.length),
+          "content-disposition": `inline; filename="${safeFilename(meta.filename).replace(/"/g, "")}"`,
+          "x-content-type-options": "nosniff",
+          "content-security-policy": "default-src 'none'; img-src 'self' data:; object-src 'none'; script-src 'none'",
+          ...corsHeaders(origin),
+        });
+        res.end(bytes);
+        return;
+      }
+
+      // attachment; disposition + a sanitized name: never let mail name a path.
+      res.writeHead(200, {
+        "content-type": "application/octet-stream",
+        "content-length": String(bytes.length),
+        "content-disposition": `attachment; filename="${safeFilename(meta.filename).replace(/"/g, "")}"`,
+        "x-content-type-options": "nosniff",
+        ...corsHeaders(origin),
+      });
+      res.end(bytes);
+      return;
+    }
+
     if (req.method === "GET" && url.pathname.startsWith("/api/messages/")) {
       const id = decodeURIComponent(url.pathname.slice("/api/messages/".length));
       const message = store.getMessage(id);
@@ -922,46 +996,6 @@ const server = http.createServer(async (req, res) => {
         },
         origin,
       );
-    }
-
-    // Download one attachment. Bytes come straight from the user's IMAP server
-    // via aether-cli; the API never stores them on disk.
-    if (req.method === "GET" && /^\/api\/messages\/.+\/parts\/\d+$/.test(url.pathname)) {
-      const [, rawId, rawPart] = url.pathname.match(/^\/api\/messages\/(.+)\/parts\/(\d+)$/) ?? [];
-      const message = store.getMessage(decodeURIComponent(rawId ?? ""));
-      if (!message) return notFound(res);
-      const account = accounts.get(message.accountId);
-      const meta = (message.attachments ?? []).find((a) => a.part === Number(rawPart));
-      if (!account || !meta || !message.uid) {
-        return json(res, 404, { error: "no_such_part" }, origin);
-      }
-      const result = await runMailCli(
-        buildMailCliArgs({
-          action: "part",
-          secretRef: account.secret_ref,
-          host: account.imap_host,
-          port: account.imap_port,
-          tls: account.imap_tls,
-          username: account.username,
-          folder: message.folder || "INBOX",
-          uid: message.uid,
-          part: meta.part,
-        }),
-      );
-      if (!result.ok || !result.part) {
-        return json(res, 502, { error: "part_failed", message: result.error }, origin);
-      }
-      const bytes = Buffer.from(result.part.data, "base64");
-      // attachment; disposition + a sanitized name: never let mail name a path.
-      res.writeHead(200, {
-        "content-type": "application/octet-stream",
-        "content-length": String(bytes.length),
-        "content-disposition": `attachment; filename="${safeFilename(meta.filename).replace(/"/g, "")}"`,
-        "x-content-type-options": "nosniff",
-        ...corsHeaders(origin),
-      });
-      res.end(bytes);
-      return;
     }
 
     // Size/name for a file the user picked in the native dialog. Read-only

@@ -1,3 +1,4 @@
+import { previewKind, type PreviewKind } from "./attachpreview.js";
 /**
  * Attachments and inline cid: images.
  *
@@ -24,6 +25,8 @@ export type StripEntry = {
   mimeType: string;
   size: number;
   human: string;
+  /** "image" | "pdf" | "text" | "none" — what the client may render in-app. */
+  preview: PreviewKind;
 };
 
 /** Only these render as inline images. Anything else stays an unresolved cid:. */
@@ -62,7 +65,21 @@ export function humanSize(bytes: number): string {
 export function safeFilename(name: string): string {
   const base = name.replace(/\\/g, "/").split("/").pop() ?? "";
   const cleaned = base.replace(/[\u0000-\u001f<>:"|?*]/g, "").replace(/^\.+/, "").trim();
-  return cleaned || "attachment";
+  if (!cleaned) return "attachment";
+
+  /*
+   * Cap the length. A sender-supplied name can be arbitrarily long, and most
+   * filesystems reject a component over 255 bytes — a save dialog that fails
+   * on OK is a worse bug than a shortened name.
+   *
+   * Keep the extension: a truncated name that no longer opens in the right
+   * application defeats the point of saving it.
+   */
+  const MAX = 120;
+  if (cleaned.length <= MAX) return cleaned;
+  const dot = cleaned.lastIndexOf(".");
+  const ext = dot > 0 && cleaned.length - dot <= 10 ? cleaned.slice(dot) : "";
+  return cleaned.slice(0, MAX - ext.length) + ext;
 }
 
 /** The strip under the message header: real attachments only, inline images excluded. */
@@ -75,5 +92,8 @@ export function attachmentStrip(parts: MailAttachment[]): StripEntry[] {
       mimeType: p.mimeType,
       size: p.size,
       human: humanSize(p.size),
+      // How, if at all, this can be shown in-app. Decided server-side from an
+      // allow-list, so the client never has to judge a sender's MIME claim.
+      preview: previewKind(p.mimeType ?? "", p.filename ?? ""),
     }));
 }

@@ -3029,3 +3029,36 @@ textarea:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ===== Attachment preview ============================================ */
+.attachment-pair { display: inline-flex; align-items: stretch; gap: 0; }
+.attachment.view { cursor: pointer; font: inherit; }
+.attachment.save {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  color: var(--muted);
+  text-decoration: none;
+}
+.attachment-pair .attachment.view {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.attachment.save:hover { color: var(--ink); background: var(--hover); }
+.attach-preview {
+  margin: 10px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.attach-frame {
+  display: block;
+  width: 100%;
+  height: 62vh;
+  border: 0;
+  background: #fff;
+}

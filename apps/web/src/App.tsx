@@ -245,8 +245,18 @@ export default function App() {
   const [mailHtml, setMailHtml] = useState<string | null>(null);
   const [remoteImages, setRemoteImages] = useState(0);
   const [attachments, setAttachments] = useState<
-    Array<{ part: number; filename: string; mimeType: string; size: number; human: string }>
+    Array<{
+      part: number;
+      filename: string;
+      mimeType: string;
+      size: number;
+      human: string;
+      /** Server's verdict on what may be rendered in-app. */
+      preview?: "image" | "pdf" | "text" | "none";
+    }>
   >([]);
+  /** The attachment being previewed inline, if any. */
+  const [previewPart, setPreviewPart] = useState<number | null>(null);
   const [imagesOn, setImagesOn] = useState(false);
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
@@ -353,6 +363,9 @@ export default function App() {
    * never drags every body into the pane at once.
    */
   useEffect(() => {
+    // Close any open preview: part numbers are per-message, so leaving it open
+    // would render a different message's attachment.
+    setPreviewPart(null);
     if (!selectedId) {
       setConvo([]);
       return;
@@ -535,6 +548,8 @@ export default function App() {
         mimeType: string;
         size: number;
         human: string;
+        /** Server's verdict on what may be rendered in-app. */
+        preview?: "image" | "pdf" | "text" | "none";
       }>;
       invite?: Invite | null;
       draft: { text: string } | null;
@@ -2684,17 +2699,66 @@ export default function App() {
                   {attachments.length} attachment{attachments.length === 1 ? "" : "s"}
                 </span>
                 {attachments.map((a) => (
-                  <a
-                    key={a.part}
-                    className="attachment"
-                    href={apiUrl(`/api/messages/${encodeURIComponent(selectedId ?? "")}/parts/${a.part}`)}
-                    download={a.filename}
-                    title={`${a.mimeType} · ${a.human}`}
-                  >
-                    <span className="attachment-name">{a.filename}</span>
-                    <span className="attachment-size">{a.human}</span>
-                  </a>
+                  <span className="attachment-pair" key={a.part}>
+                    {/*
+                      A View button only when the server said the type is
+                      safe to render. Download stays available for everything,
+                      so an unpreviewable file is never a dead end.
+                    */}
+                    {a.preview && a.preview !== "none" ? (
+                      <button
+                        className="attachment view"
+                        onClick={() => setPreviewPart(previewPart === a.part ? null : a.part)}
+                        title={`View ${a.filename} without downloading`}
+                      >
+                        <span className="attachment-name">
+                          {previewPart === a.part ? "▾ " : "▸ "}
+                          {a.filename}
+                        </span>
+                        <span className="attachment-size">{a.human}</span>
+                      </button>
+                    ) : (
+                      <a
+                        className="attachment"
+                        href={apiUrl(`/api/messages/${encodeURIComponent(selectedId ?? "")}/parts/${a.part}`)}
+                        download={a.filename}
+                        title={`${a.mimeType} · ${a.human}`}
+                      >
+                        <span className="attachment-name">{a.filename}</span>
+                        <span className="attachment-size">{a.human}</span>
+                      </a>
+                    )}
+                    {a.preview && a.preview !== "none" ? (
+                      <a
+                        className="attachment save"
+                        href={apiUrl(`/api/messages/${encodeURIComponent(selectedId ?? "")}/parts/${a.part}`)}
+                        download={a.filename}
+                        title={`Save ${a.filename}`}
+                      >
+                        ⭳
+                      </a>
+                    ) : null}
+                  </span>
                 ))}
+              </div>
+            ) : null}
+            {/*
+              The preview itself, sandboxed exactly like mail HTML.
+              `sandbox` with no allow-* tokens means no scripts, no forms, no
+              same-origin — an attachment is a file from a stranger, so it gets
+              the same treatment as a mail body regardless of its type.
+            */}
+            {previewPart !== null && selectedId ? (
+              <div className="attach-preview">
+                <iframe
+                  title="Attachment preview"
+                  className="attach-frame"
+                  sandbox=""
+                  referrerPolicy="no-referrer"
+                  src={apiUrl(
+                    `/api/messages/${encodeURIComponent(selectedId)}/parts/${previewPart}?preview=1`,
+                  )}
+                />
               </div>
             ) : null}
             {remoteImages > 0 ? (
