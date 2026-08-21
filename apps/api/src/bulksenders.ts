@@ -29,6 +29,10 @@ export type Candidate = {
   label: string;
   count: number;
   unread: number;
+  /** True when this domain was held back rather than offered. */
+  withheld?: boolean;
+  /** Why it was held back, in words a user can read. */
+  reason?: string;
 };
 
 export type Options = {
@@ -39,7 +43,52 @@ export type Options = {
   /** Below this, a sender is not a filing problem. */
   minCount?: number;
   maxCandidates?: number;
+  /** Return withheld domains too, flagged, so the UI can explain itself. */
+  includeWithheld?: boolean;
 };
+
+/*
+ * Subjects that must never be auto-filed.
+ *
+ * A filing rule is domain-wide and blunt: it cannot tell a Pixel advert from a
+ * security alert sent by the same company. Found by reading the real
+ * suggestions rather than trusting them — the live inbox offered "google.com,
+ * 5 messages", and that rule would also have archived two "Security alert"
+ * notices, two account-change notices and five delivery failures.
+ *
+ * Burying those is a real harm, and worse than the untidy inbox the rule was
+ * meant to fix. So a domain that mixes them in is not offered at all.
+ *
+ * Anchored to the start, or to a word boundary with adjacent punctuation, so
+ * ordinary marketing copy ("Secure your seat at our sale") does not trip it —
+ * being too eager here quietly disables the feature for normal newsletters.
+ */
+const NEVER_FILE = [
+  /^security alert/,
+  /\bsecurity alert\b/,
+  /\bsuspicious (activity|sign)/,
+  /\bverification code\b/,
+  /\bverify your (email|account|address)\b/,
+  /\bone[- ]time (pass)?code\b/,
+  /\bpassword (was )?(changed|reset)\b/,
+  /\bnew sign[- ]?in\b/,
+  /\btwo[- ]factor\b/,
+  /\b2fa\b/,
+  /^delivery status notification/,
+  /^undeliverable\b/,
+  /^mail delivery (failed|subsystem)/,
+  /\bpayment (failed|declined)\b/,
+  /\byour receipt\b/,
+  /^invoice\b/,
+  /\bfamily group member\b/,
+];
+
+/** Does this subject look like mail a user must not miss? */
+function mustNotFile(subject: string): boolean {
+  const s = (subject ?? "").toLowerCase().trim();
+  if (!s) return false;
+  return NEVER_FILE.some((re) => re.test(s));
+}
 
 /** Bare address out of `Name <a@b.c>` or `a@b.c`. */
 function addressOf(from: string): string {
@@ -74,15 +123,29 @@ export function findBulkSenders(rows: SourceRow[], opts: Options = {}): Candidat
   const maxCandidates = opts.maxCandidates ?? 5;
   const ruled = (opts.alreadyRuled ?? []).map((r) => r.toLowerCase());
 
-  const byDomain = new Map<string, { count: number; unread: number; labels: Map<string, number> }>();
+  type DomainEntry = {
+    count: number;
+    unread: number;
+    labels: Map<string, number>;
+    protectedSubject?: string;
+  };
+  const byDomain = new Map<string, DomainEntry>();
 
   for (const row of rows) {
     const domain = domainOf(row?.from ?? "");
     if (!domain) continue;
 
-    const entry = byDomain.get(domain) ?? { count: 0, unread: 0, labels: new Map() };
+    const entry: DomainEntry = byDomain.get(domain) ?? {
+      count: 0,
+      unread: 0,
+      labels: new Map<string, number>(),
+    };
     entry.count += 1;
     if (row.unread) entry.unread += 1;
+    // Remember the first must-not-file subject so the reason can be specific.
+    if (!entry.protectedSubject && mustNotFile(row.subject ?? "")) {
+      entry.protectedSubject = (row.subject ?? "").trim();
+    }
     const label = labelOf(row.from);
     entry.labels.set(label, (entry.labels.get(label) ?? 0) + 1);
     byDomain.set(domain, entry);
@@ -104,6 +167,25 @@ export function findBulkSenders(rows: SourceRow[], opts: Options = {}): Candidat
         best = n;
         label = name;
       }
+    }
+
+    /*
+     * The domain also carries mail that must not be buried, so a blunt
+     * domain-wide rule is unsafe. Withhold it rather than offer a rule that
+     * would archive a security alert.
+     */
+    if (entry.protectedSubject) {
+      if (opts.includeWithheld) {
+        out.push({
+          match: domain,
+          label,
+          count: entry.count,
+          unread: entry.unread,
+          withheld: true,
+          reason: `also sends security or transactional mail (e.g. "${entry.protectedSubject}")`,
+        });
+      }
+      continue;
     }
 
     out.push({ match: domain, label, count: entry.count, unread: entry.unread });
