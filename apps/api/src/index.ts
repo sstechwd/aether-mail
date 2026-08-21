@@ -49,6 +49,7 @@ import { ensureFreshToken, type RefreshDeps } from "./tokenrefresh.js";
 import { SyncState, planFetch } from "./syncstate.js";
 import { findBulkSenders } from "./bulksenders.js";
 import { parseUnsubscribe } from "./unsubscribe.js";
+import { buildConversation } from "./conversation.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -694,6 +695,53 @@ const server = http.createServer(async (req, res) => {
         body: body.body ?? "",
       });
       return json(res, 201, { message, folders: store.listFolders(FIXTURE_ACCOUNT.id) }, origin);
+    }
+
+    /*
+     * The whole conversation around one message.
+     *
+     * The list already groups threads, but opening one used to show a single
+     * message, so a reply was read with its own question missing. 86 of 180
+     * live inbox messages sit in multi-message threads.
+     *
+     * Must sit ABOVE the catch-all GET /api/messages/:id below, which would
+     * otherwise match this path first and return a single message.
+     */
+    if (req.method === "GET" && url.pathname.startsWith("/api/messages/") && url.pathname.endsWith("/conversation")) {
+      const id = decodeURIComponent(
+        url.pathname.slice("/api/messages/".length, -"/conversation".length),
+      );
+      const message = store.getMessage(id);
+      if (!message) return json(res, 404, { error: "unknown_message" }, origin);
+
+      // Search the folder the message actually lives in, not the active view:
+      // a conversation opened from search may span a different folder.
+      const convo = buildConversation(
+        store.listMessages(message.accountId, message.folder, "newest"),
+        id,
+      );
+
+      return json(
+        res,
+        200,
+        {
+          focusId: convo.focusId,
+          unread: convo.unread,
+          truncated: convo.truncated,
+          // Envelopes only. Bodies are fetched per message as they open, so a
+          // 40-message thread does not drag 40 HTML payloads into the pane.
+          messages: convo.messages.map((m) => ({
+            id: m.id,
+            from: m.from,
+            to: m.to,
+            subject: m.subject,
+            date: m.date,
+            unread: m.unread,
+            preview: m.preview,
+          })),
+        },
+        origin,
+      );
     }
 
     /*

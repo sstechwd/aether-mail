@@ -329,6 +329,16 @@ export default function App() {
     mailto?: string;
   };
   const [unsub, setUnsub] = useState<Unsub | null>(null);
+  /** Sibling messages in the open message's thread, oldest first. */
+  type ConvoRow = {
+    id: string;
+    from: string;
+    subject: string;
+    date: string;
+    unread?: boolean;
+    preview?: string;
+  };
+  const [convo, setConvo] = useState<ConvoRow[]>([]);
 
   /*
    * Ask what the open message offers by way of unsubscribing.
@@ -336,6 +346,32 @@ export default function App() {
    * Read-only: this never contacts the sender, it only reads the headers we
    * already stored. Nothing leaves the machine until the user clicks.
    */
+  /*
+   * Load the rest of the conversation.
+   *
+   * Envelopes only — clicking a sibling opens it normally, so a long thread
+   * never drags every body into the pane at once.
+   */
+  useEffect(() => {
+    if (!selectedId) {
+      setConvo([]);
+      return;
+    }
+    let cancelled = false;
+    void api<{ messages?: ConvoRow[] }>(
+      `/api/messages/${encodeURIComponent(selectedId)}/conversation`,
+    )
+      .then((d) => {
+        if (!cancelled) setConvo(d.messages ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setConvo([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
   useEffect(() => {
     if (!selectedId) {
       setUnsub(null);
@@ -2535,6 +2571,33 @@ export default function App() {
               <p>
                 <b>Date</b> {formatWhen(selected.date)}
               </p>
+              {/*
+                The rest of the thread, oldest first — the order it happened
+                in, which is deliberately the opposite of the list (newest
+                first), because here you are reading rather than scanning.
+                Only shown when there is more than one message.
+              */}
+              {convo.length > 1 ? (
+                <div className="convo">
+                  <div className="convo-head">
+                    {convo.length} messages in this conversation
+                  </div>
+                  {convo.map((c) => (
+                    <button
+                      key={c.id}
+                      className={`convo-row${c.id === selectedId ? " on" : ""}${
+                        c.unread ? " unread" : ""
+                      }`}
+                      onClick={() => setSelectedId(c.id)}
+                      title={c.subject}
+                    >
+                      <span className="convo-from">{c.from}</span>
+                      <span className="convo-when">{formatWhen(c.date)}</span>
+                      {c.preview ? <span className="convo-peek">{c.preview}</span> : null}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <div className="msg-actions">
                 <button onClick={() => openMessageWindow()} title="Open in a separate window">
                   ⧉ Pop out

@@ -2985,3 +2985,47 @@ textarea:focus-visible {
   color: var(--muted);
   font-size: 12px;
 }
+
+/* ===== Conversation strip in the reading pane ======================== */
+.convo {
+  margin: 10px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.convo-head {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.convo-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+}
+.convo-row:first-of-type { border-top: 0; }
+.convo-row:hover { background: var(--hover); }
+.convo-row.on { background: var(--select); color: var(--ink); }
+.convo-row.unread .convo-from { font-weight: 600; color: var(--ink); }
+.convo-from { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.convo-when { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.convo-peek {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
