@@ -25,6 +25,21 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export default function Settings(props: { onClose: () => void }) {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [signature, setSignature] = useState("");
+  /** Profile backups, and the status line under the button. */
+  const [backups, setBackups] = useState<
+    { name: string; path: string; createdAt: string; messages: number }[]
+  >([]);
+  const [backupNote, setBackupNote] = useState<string | null>(null);
+
+  async function loadBackups(): Promise<void> {
+    try {
+      const r = await fetch(apiUrl("/api/backup"));
+      const d = (await r.json()) as { backups?: typeof backups };
+      setBackups(d.backups ?? []);
+    } catch {
+      setBackups([]);
+    }
+  }
   const [sigNote, setSigNote] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
   const [llm, setLlm] = useState<Llm | null>(null);
@@ -48,6 +63,7 @@ export default function Settings(props: { onClose: () => void }) {
   const [alwaysShow, setAlwaysShow] = useState(false);
 
   useEffect(() => {
+    void loadBackups();
     api<{ signature: string }>("/api/signature")
       .then((d) => setSignature(d.signature ?? ""))
       .catch(() => undefined);
@@ -160,6 +176,79 @@ export default function Settings(props: { onClose: () => void }) {
           Save mail account on this machine
         </button>
       </section>
+      <section>
+        <h2>Your data</h2>
+        <p className="hint">
+          Mail lives in one SQLite file plus plain JSON settings. Any tool can read it —
+          no export format, no lock-in. Passwords are <em>not</em> included: they stay in the
+          OS keyring, so a backup is not a copy of your credentials.
+        </p>
+        <button
+          onClick={() => {
+            setBackupNote("Backing up…");
+            fetch(apiUrl("/api/backup"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({}),
+            })
+              .then((r) => r.json())
+              .then((d: { messages?: number; bytes?: number; path?: string; error?: string }) => {
+                if (d.error) {
+                  setBackupNote(d.error);
+                  return;
+                }
+                const mb = ((d.bytes ?? 0) / 1048576).toFixed(1);
+                setBackupNote(`Backed up ${d.messages ?? 0} messages (${mb} MB) to ${d.path}`);
+                void loadBackups();
+              })
+              .catch((e: Error) => setBackupNote(e.message));
+          }}
+        >
+          Back up now
+        </button>
+        {backupNote ? <p className="note">{backupNote}</p> : null}
+        {backups.length > 0 ? (
+          <div className="backup-list">
+            {backups.map((b) => (
+              <div className="backup-row" key={b.path}>
+                <span>
+                  <strong>{new Date(b.createdAt).toLocaleString()}</strong>
+                  <span className="hint"> · {b.messages} messages</span>
+                </span>
+                <button
+                  className="subtle-danger"
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        `Restore ${b.messages} messages from ${new Date(b.createdAt).toLocaleString()}?\n\n` +
+                          "Your current mail is moved aside, not deleted. Aether must be restarted afterwards.",
+                      )
+                    )
+                      return;
+                    fetch(apiUrl("/api/backup/restore"), {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ path: b.path }),
+                    })
+                      .then((r) => r.json())
+                      .then((d: { error?: string; movedAsideTo?: string }) => {
+                        setBackupNote(
+                          d.error
+                            ? d.error
+                            : `Restored. Previous profile kept at ${d.movedAsideTo}. Restart Aether now.`,
+                        );
+                      })
+                      .catch((e: Error) => setBackupNote(e.message));
+                  }}
+                >
+                  Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
       <section>
         <h2>Signature</h2>
         <p className="hint">

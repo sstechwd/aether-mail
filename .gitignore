@@ -53,3 +53,6 @@ data/*.bak
 .hermes/focus-app.ps1
 .hermes/ram.ps1
 .hermes/branch-protection.json
+
+# Profile backups contain real mailbox contents.
+backups/

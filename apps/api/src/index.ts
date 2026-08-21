@@ -41,6 +41,7 @@ import { RuleBook } from "./rules.js";
 import { SnoozeBook, snoozeUntil, type SnoozePreset } from "./snooze.js";
 import { MuteBook } from "./mute.js";
 import { mergeAccounts } from "./unified.js";
+import { createBackup, listBackupContents, restoreBackup } from "./backup.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -765,6 +766,72 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(url.pathname.slice("/api/calendar/".length));
       const ok = calendar.remove(id);
       return json(res, ok ? 200 : 404, { removed: ok }, origin);
+    }
+
+    /*
+     * Backup and restore.
+     *
+     * The archive is a plain directory: a SQLite file anyone can open with
+     * `sqlite3` plus the settings as JSON. Credentials are never included —
+     * they live in the OS keyring, so a backup is deliberately not a copy of
+     * your passwords.
+     */
+    if (req.method === "POST" && url.pathname === "/api/backup") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw) ?? {};
+      const dest = asString(body.dest, "", 500) || path.join(here, "backups");
+      try {
+        fs.mkdirSync(dest, { recursive: true });
+        const result = createBackup(path.join(here, "data"), dest);
+        audit.append({
+          actor: "user",
+          action: "backup.create",
+          detail: `${result.messages} message(s)`,
+        });
+        return json(res, 200, result, origin);
+      } catch (e) {
+        return json(res, 500, { error: e instanceof Error ? e.message : "backup_failed" }, origin);
+      }
+    }
+
+    // What backups exist, newest first.
+    if (req.method === "GET" && url.pathname === "/api/backup") {
+      const dest = path.join(here, "backups");
+      if (!fs.existsSync(dest)) return json(res, 200, { backups: [], dir: dest }, origin);
+      const rows = fs
+        .readdirSync(dest)
+        .map((name) => ({ name, info: listBackupContents(path.join(dest, name)) }))
+        .filter((r) => r.info !== null)
+        .map((r) => ({
+          name: r.name,
+          path: path.join(dest, r.name),
+          createdAt: r.info?.createdAt ?? "",
+          messages: r.info?.messages ?? 0,
+          files: r.info?.files.length ?? 0,
+        }))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return json(res, 200, { backups: rows, dir: dest }, origin);
+    }
+
+    /*
+     * Restore. The current profile is moved aside, never deleted, so an
+     * accidental restore costs a rename to undo rather than someone's mail.
+     * A restart is required afterwards: the store holds an open handle to the
+     * database that was just replaced.
+     */
+    if (req.method === "POST" && url.pathname === "/api/backup/restore") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+      const from = asString(body.path, "", 500);
+      if (!from) return json(res, 400, { error: "no_path" }, origin);
+      try {
+        const result = restoreBackup(from, path.join(here, "data"));
+        audit.append({ actor: "user", action: "backup.restore", detail: from.slice(0, 80) });
+        return json(res, 200, { ...result, restartRequired: true }, origin);
+      } catch (e) {
+        return json(res, 400, { error: e instanceof Error ? e.message : "restore_failed" }, origin);
+      }
     }
 
     /**

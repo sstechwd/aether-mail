@@ -2884,3 +2884,20 @@ textarea:focus-visible {
   color: var(--accent-soft);
   font-size: 10.5px;
 }
+
+/* ===== Backup list in Settings ======================================== */
+.backup-list { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
+
+.backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+  transition: border-color 140ms ease-out;
+}
+
+.backup-row:hover { border-color: var(--line-strong); }
