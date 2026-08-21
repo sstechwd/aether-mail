@@ -48,6 +48,7 @@ import { TokenCache } from "./tokencache.js";
 import { ensureFreshToken, type RefreshDeps } from "./tokenrefresh.js";
 import { SyncState, planFetch } from "./syncstate.js";
 import { findBulkSenders } from "./bulksenders.js";
+import { parseUnsubscribe } from "./unsubscribe.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -693,6 +694,109 @@ const server = http.createServer(async (req, res) => {
         body: body.body ?? "",
       });
       return json(res, 201, { message, folders: store.listFolders(FIXTURE_ACCOUNT.id) }, origin);
+    }
+
+    /*
+     * Unsubscribe.
+     *
+     * Filing a newsletter hides it; unsubscribing stops it. 93 of 180 messages
+     * in the live inbox carry List-Unsubscribe and 90 support RFC 8058
+     * One-Click, so this is worth doing properly.
+     *
+     * GET reports what is possible. The POST below performs it, and only for
+     * an https endpoint — a mailto: unsubscribe means SENDING MAIL, which is
+     * the one capability this app withholds, so it is handed to the human
+     * confirm-to-send path instead of being actioned here.
+     */
+    if (req.method === "GET" && url.pathname.startsWith("/api/messages/") && url.pathname.endsWith("/unsubscribe")) {
+      const id = decodeURIComponent(
+        url.pathname.slice("/api/messages/".length, -"/unsubscribe".length),
+      );
+      const message = store.getMessage(id);
+      if (!message) return json(res, 404, { error: "unknown_message" }, origin);
+      const found = parseUnsubscribe(message.headers ?? "");
+      if (!found) return json(res, 200, { available: false }, origin);
+      return json(res, 200, { available: true, ...found }, origin);
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/api/messages/") && url.pathname.endsWith("/unsubscribe")) {
+      const id = decodeURIComponent(
+        url.pathname.slice("/api/messages/".length, -"/unsubscribe".length),
+      );
+      const message = store.getMessage(id);
+      if (!message) return json(res, 404, { error: "unknown_message" }, origin);
+
+      const found = parseUnsubscribe(message.headers ?? "");
+      if (!found?.url) {
+        /*
+         * Either there is no unsubscribe, or it is mailto-only. Both are a
+         * refusal here. The URL is re-parsed from the stored headers rather
+         * than accepted from the client, so a hostile page cannot talk this
+         * endpoint into fetching an arbitrary address.
+         */
+        return json(
+          res,
+          409,
+          {
+            error: "not_actionable",
+            message: found?.mailto
+              ? "This sender only accepts unsubscribe by email. Aether will not send mail on your behalf — use Compose to send it yourself."
+              : "No unsubscribe link in this message.",
+            mailto: found?.mailto,
+          },
+          origin,
+        );
+      }
+
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10_000);
+        const response = await fetch(found.url, {
+          // RFC 8058 One-Click is a POST; anything else gets a plain GET.
+          method: found.oneClick ? "POST" : "GET",
+          headers: found.oneClick
+            ? { "Content-Type": "application/x-www-form-urlencoded" }
+            : undefined,
+          body: found.oneClick ? "List-Unsubscribe=One-Click" : undefined,
+          redirect: "follow",
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        audit.append({
+          actor: "user",
+          action: "unsubscribe",
+          detail: `${found.fromDomain ?? "unknown"} -> HTTP ${response.status}`,
+        });
+
+        return json(
+          res,
+          200,
+          {
+            ok: response.ok,
+            status: response.status,
+            oneClick: found.oneClick,
+            // Honest about the limit: a 200 means the request was accepted,
+            // not that the sender actually honoured it.
+            message: response.ok
+              ? "Unsubscribe request sent. Senders can take a few days to stop."
+              : `The sender's unsubscribe page returned ${response.status}.`,
+          },
+          origin,
+        );
+      } catch (e) {
+        return json(
+          res,
+          502,
+          {
+            error: "unreachable",
+            message: `Could not reach the unsubscribe address: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          },
+          origin,
+        );
+      }
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/api/messages/")) {

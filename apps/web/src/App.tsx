@@ -320,6 +320,39 @@ export default function App() {
   const [ruleAction, setRuleAction] = useState<"move" | "star" | "read">("move");
   const [ruleFolder, setRuleFolder] = useState("Archive");
   const [ruleNote, setRuleNote] = useState<string | null>(null);
+  /** What the open message offers by way of unsubscribing, if anything. */
+  type Unsub = {
+    available?: boolean;
+    method?: "web" | "email";
+    oneClick?: boolean;
+    fromDomain?: string;
+    mailto?: string;
+  };
+  const [unsub, setUnsub] = useState<Unsub | null>(null);
+
+  /*
+   * Ask what the open message offers by way of unsubscribing.
+   *
+   * Read-only: this never contacts the sender, it only reads the headers we
+   * already stored. Nothing leaves the machine until the user clicks.
+   */
+  useEffect(() => {
+    if (!selectedId) {
+      setUnsub(null);
+      return;
+    }
+    let cancelled = false;
+    void api<Unsub>(`/api/messages/${encodeURIComponent(selectedId)}/unsubscribe`)
+      .then((d) => {
+        if (!cancelled) setUnsub(d);
+      })
+      .catch(() => {
+        if (!cancelled) setUnsub(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
   /**
    * Bulk senders worth a rule, computed from the folder.
    *
@@ -844,6 +877,29 @@ export default function App() {
     } catch {
       // Suggestions are a bonus; never break the rules page over them.
       setSuggestions([]);
+    }
+  }
+
+  /**
+   * Unsubscribe from the open message's sender.
+   *
+   * Confirms first: unsubscribing is not destructive but it is irreversible
+   * without visiting the sender's site, and it confirms to them that the
+   * address is live.
+   */
+  async function doUnsubscribe(): Promise<void> {
+    if (!selectedId) return;
+    const who = unsub?.fromDomain ?? "this sender";
+    if (!window.confirm(`Ask ${who} to stop emailing you?`)) return;
+    try {
+      const d = await api<{ ok?: boolean; message?: string }>(
+        `/api/messages/${encodeURIComponent(selectedId)}/unsubscribe`,
+        { method: "POST" },
+      );
+      setRuleNote(d.message ?? "Unsubscribe request sent.");
+      setUnsub(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not unsubscribe.");
     }
   }
 
@@ -2486,6 +2542,16 @@ export default function App() {
                 <button onClick={() => void startCompose("reply")}>↩ Reply</button>
                 <button onClick={() => void startCompose("all")}>↩↩ Reply all</button>
                 <button onClick={() => void startCompose("forward")}>↪ Forward</button>
+                {/*
+                  Only shown when the sender advertised a safe https
+                  unsubscribe. A mailto-only sender is deliberately not
+                  offered here — that would mean sending mail.
+                */}
+                {unsub?.available && unsub.method === "web" ? (
+                  <button onClick={() => void doUnsubscribe()} title={`Unsubscribe from ${unsub.fromDomain ?? "this sender"}`}>
+                    ⊘ Unsubscribe
+                  </button>
+                ) : null}
                 <button onClick={() => void deleteSelected()} className="subtle-danger">
                   🗑 Delete
                 </button>
