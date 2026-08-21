@@ -24,6 +24,9 @@ pub struct Outgoing {
     pub to: String,
     pub subject: String,
     pub body: String,
+    /// Optional formatted body. When present the message is sent as
+    /// multipart/alternative so plain-text readers still get `body`.
+    pub html: Option<String>,
     pub attachments: Vec<OutgoingAttachment>,
 }
 
@@ -107,10 +110,54 @@ pub fn build_outgoing(mail: &Outgoing) -> Result<Vec<u8>, String> {
     out.push_str(&format!("Subject: {}\r\n", encode_header(&subject)));
     out.push_str("MIME-Version: 1.0\r\n");
 
-    if mail.attachments.is_empty() {
+    let crlf = |s: &str| s.replace("\r\n", "\n").replace('\n', "\r\n");
+
+    // Simplest case: plain text, nothing attached.
+    if mail.attachments.is_empty() && mail.html.is_none() {
         out.push_str("Content-Type: text/plain; charset=UTF-8\r\n");
         out.push_str("Content-Transfer-Encoding: 8bit\r\n\r\n");
-        out.push_str(&mail.body.replace("\r\n", "\n").replace('\n', "\r\n"));
+        out.push_str(&crlf(&mail.body));
+        return Ok(out.into_bytes());
+    }
+
+    /*
+     * Build the body part.
+     *
+     * With formatting this is a multipart/alternative carrying both a plain
+     * and an HTML rendering. RFC 2046 orders alternatives least-faithful
+     * first, because clients pick the LAST one they understand — put HTML
+     * first and nobody ever sees the formatting.
+     */
+    let alt_boundary = format!("{}_alt", boundary_for(mail));
+    let body_part = if let Some(html) = &mail.html {
+        let mut part = String::new();
+        part.push_str(&format!(
+            "Content-Type: multipart/alternative; boundary=\"{alt_boundary}\"\r\n\r\n"
+        ));
+        part.push_str(&format!("--{alt_boundary}\r\n"));
+        part.push_str("Content-Type: text/plain; charset=UTF-8\r\n");
+        part.push_str("Content-Transfer-Encoding: 8bit\r\n\r\n");
+        part.push_str(&crlf(&mail.body));
+        part.push_str("\r\n\r\n");
+        part.push_str(&format!("--{alt_boundary}\r\n"));
+        part.push_str("Content-Type: text/html; charset=UTF-8\r\n");
+        part.push_str("Content-Transfer-Encoding: 8bit\r\n\r\n");
+        part.push_str(&crlf(html));
+        part.push_str("\r\n\r\n");
+        part.push_str(&format!("--{alt_boundary}--\r\n"));
+        part
+    } else {
+        let mut part = String::new();
+        part.push_str("Content-Type: text/plain; charset=UTF-8\r\n");
+        part.push_str("Content-Transfer-Encoding: 8bit\r\n\r\n");
+        part.push_str(&crlf(&mail.body));
+        part.push_str("\r\n");
+        part
+    };
+
+    // Formatted but nothing attached: the alternative IS the message.
+    if mail.attachments.is_empty() {
+        out.push_str(&body_part);
         return Ok(out.into_bytes());
     }
 
@@ -121,10 +168,8 @@ pub fn build_outgoing(mail: &Outgoing) -> Result<Vec<u8>, String> {
     out.push_str("This is a multi-part message in MIME format.\r\n\r\n");
 
     out.push_str(&format!("--{boundary}\r\n"));
-    out.push_str("Content-Type: text/plain; charset=UTF-8\r\n");
-    out.push_str("Content-Transfer-Encoding: 8bit\r\n\r\n");
-    out.push_str(&mail.body.replace("\r\n", "\n").replace('\n', "\r\n"));
-    out.push_str("\r\n\r\n");
+    out.push_str(&body_part);
+    out.push_str("\r\n");
 
     for att in &mail.attachments {
         let name = safe_filename(&att.filename);

@@ -420,10 +420,13 @@ fn extract_addr(value: &str) -> String {
 
 /// stdin is either a raw body (older callers) or `{"body": "...",
 /// "attachments": ["C:/path/file.pdf"]}`. Returns (body, paths).
-fn parse_send_stdin(raw: &str) -> (String, Vec<String>) {
+/// Parse the JSON the API sends on stdin: body text, optional formatted HTML,
+/// and attachment paths. Paths go over stdin rather than argv so filenames
+/// never reach a process list or a shell log.
+fn parse_send_stdin(raw: &str) -> (String, Option<String>, Vec<String>) {
     let trimmed = raw.trim_start();
     if !trimmed.starts_with('{') {
-        return (raw.to_string(), Vec::new());
+        return (raw.to_string(), None, Vec::new());
     }
     match serde_json::from_str::<serde_json::Value>(trimmed) {
         Ok(v) => {
@@ -432,6 +435,11 @@ fn parse_send_stdin(raw: &str) -> (String, Vec<String>) {
                 .and_then(|b| b.as_str())
                 .unwrap_or_default()
                 .to_string();
+            let html = v
+                .get("html")
+                .and_then(|h| h.as_str())
+                .filter(|h| !h.trim().is_empty())
+                .map(str::to_string);
             let paths = v
                 .get("attachments")
                 .and_then(|a| a.as_array())
@@ -441,10 +449,10 @@ fn parse_send_stdin(raw: &str) -> (String, Vec<String>) {
                         .collect()
                 })
                 .unwrap_or_default();
-            (body, paths)
+            (body, html, paths)
         }
         // Body that merely happens to start with '{' is still a body.
-        Err(_) => (raw.to_string(), Vec::new()),
+        Err(_) => (raw.to_string(), None, Vec::new()),
     }
 }
 
@@ -481,7 +489,7 @@ fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
     // stdin is either a plain body (back-compat) or a JSON envelope carrying
     // the body plus attachment paths. Paths never go on argv: the command line
     // is visible to every process on the machine.
-    let (body_text, attachment_paths) = parse_send_stdin(&body);
+    let (body_text, body_html, attachment_paths) = parse_send_stdin(&body);
 
     let mut attachments = Vec::new();
     let mut total: usize = 0;
@@ -511,6 +519,7 @@ fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
         to: to.clone(),
         subject: subject.clone(),
         body: body_text,
+        html: body_html,
         attachments,
     })?;
 

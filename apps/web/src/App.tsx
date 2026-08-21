@@ -340,6 +340,9 @@ export default function App() {
   const [composeNote, setComposeNote] = useState<string | null>(null);
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
+  /** Formatted body from the contenteditable, sanitized server-side at prepare. */
+  const [composeHtml, setComposeHtml] = useState("");
+  const composeRef = useRef<HTMLDivElement | null>(null);
 
   async function refreshFolders() {
     const data = await api<{ folders: Folder[] }>("/api/folders");
@@ -917,6 +920,10 @@ export default function App() {
         setComposeTo("");
         setComposeSubject("");
         setComposeBody("");
+      setComposeHtml("");
+      if (composeRef.current) composeRef.current.innerHTML = "";
+        setComposeHtml("");
+        if (composeRef.current) composeRef.current.innerHTML = "";
         setAttachFiles([]);
         setScheduleAt("");
         setSendNote(data.queued ? "Queued in the Outbox." : "Sent via SMTP.");
@@ -974,7 +981,7 @@ export default function App() {
     try {
       const data = await api<{ message: Message; folders: Folder[] }>("/api/compose", {
         method: "POST",
-        body: JSON.stringify({ to: composeTo, subject: composeSubject, body: composeBody }),
+        body: JSON.stringify({ to: composeTo, subject: composeSubject, body: composeBody, html: composeHtml }),
       });
       setFolders(data.folders);
       setComposing(false);
@@ -2455,7 +2462,62 @@ export default function App() {
             ) : null}
           </div>
           <input placeholder="Subject" value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} />
-          <textarea rows={8} value={composeBody} onChange={(e) => setComposeBody(e.target.value)} />
+          {/*
+            Formatting toolbar. execCommand is deprecated but is still the only
+            thing every engine implements for contenteditable, and the output
+            is sanitized server-side at prepare regardless of what it emits.
+          */}
+          <div className="fmt-bar">
+            <button type="button" title="Bold" onMouseDown={(e) => { e.preventDefault(); document.execCommand("bold"); }}>
+              <b>B</b>
+            </button>
+            <button type="button" title="Italic" onMouseDown={(e) => { e.preventDefault(); document.execCommand("italic"); }}>
+              <i>I</i>
+            </button>
+            <button type="button" title="Underline" onMouseDown={(e) => { e.preventDefault(); document.execCommand("underline"); }}>
+              <u>U</u>
+            </button>
+            <span className="fmt-sep" />
+            <button type="button" title="Bullet list" onMouseDown={(e) => { e.preventDefault(); document.execCommand("insertUnorderedList"); }}>
+              •—
+            </button>
+            <button type="button" title="Numbered list" onMouseDown={(e) => { e.preventDefault(); document.execCommand("insertOrderedList"); }}>
+              1.
+            </button>
+            <span className="fmt-sep" />
+            <button
+              type="button"
+              title="Add a link"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const url = window.prompt("Link to:");
+                if (url && /^https?:\/\//i.test(url)) document.execCommand("createLink", false, url);
+              }}
+            >
+              🔗
+            </button>
+            <button
+              type="button"
+              title="Remove formatting"
+              onMouseDown={(e) => { e.preventDefault(); document.execCommand("removeFormat"); }}
+            >
+              ⌫
+            </button>
+          </div>
+          <div
+            className="compose-body"
+            contentEditable
+            suppressContentEditableWarning
+            role="textbox"
+            aria-multiline="true"
+            aria-label="Message body"
+            ref={composeRef}
+            onInput={(e) => {
+              const el = e.currentTarget;
+              setComposeHtml(el.innerHTML);
+              setComposeBody(el.innerText);
+            }}
+          />
           {attachFiles.length > 0 ? (
             <div className="attach-list">
               {attachFiles.map((f) => (

@@ -21,6 +21,7 @@ fn plain_message_without_attachments_stays_simple() {
         to: "you@example.com".into(),
         subject: "hello".into(),
         body: "just text".into(),
+        html: None,
         attachments: vec![],
     })
     .expect("build failed");
@@ -42,6 +43,7 @@ fn message_with_one_attachment_is_multipart_and_carries_the_file() {
         to: "you@example.com".into(),
         subject: "here is the report".into(),
         body: "see attached".into(),
+        html: None,
         attachments: vec![attachment("q3.pdf", "application/pdf", b"%PDF-1.4 fake")],
     })
     .expect("build failed");
@@ -69,6 +71,7 @@ fn multiple_attachments_all_survive() {
         to: "you@example.com".into(),
         subject: "two files".into(),
         body: "both attached".into(),
+        html: None,
         attachments: vec![
             attachment("a.txt", "text/plain", b"alpha"),
             attachment("b.png", "image/png", b"\x89PNG\r\n\x1a\n"),
@@ -91,6 +94,7 @@ fn attachment_filename_cannot_carry_a_path() {
         to: "you@example.com".into(),
         subject: "nasty".into(),
         body: "x".into(),
+        html: None,
         attachments: vec![attachment("../../etc/passwd", "text/plain", b"root:x:0:0")],
     })
     .expect("build failed");
@@ -110,6 +114,7 @@ fn rejects_a_message_with_no_recipient() {
         to: "   ".into(),
         subject: "x".into(),
         body: "x".into(),
+        html: None,
         attachments: vec![],
     });
     assert!(err.is_err(), "empty recipient must be refused");
@@ -127,4 +132,92 @@ fn guesses_common_mime_types_from_the_extension() {
     // Unknown extensions fall back to a safe generic type.
     assert_eq!(guess_mime("mystery.zzz"), "application/octet-stream");
     assert_eq!(guess_mime("noextension"), "application/octet-stream");
+}
+
+// ---------------------------------------------------------------------------
+// Rich text.
+//
+// When the user formats a message we must send multipart/alternative: an HTML
+// part for clients that render it, and a text part for those that do not. A
+// mail with no text part looks empty to anyone reading in plain text.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn html_body_produces_multipart_alternative() {
+    let mail = build_outgoing(&Outgoing {
+        from: "me@example.com".into(),
+        to: "you@example.com".into(),
+        subject: "Formatted".into(),
+        body: "Hello world".into(),
+        html: Some("<p><b>Hello</b> world</p>".into()),
+        ..Default::default()
+    })
+    .expect("builds");
+    let text = String::from_utf8(mail).expect("utf8");
+
+    assert!(
+        text.contains("multipart/alternative"),
+        "needs an alternative container"
+    );
+    assert!(text.contains("text/plain"), "needs a plain part");
+    assert!(text.contains("text/html"), "needs an html part");
+    assert!(text.contains("<b>Hello</b>"), "html survives");
+    assert!(text.contains("Hello world"), "plain survives");
+}
+
+#[test]
+fn plain_part_comes_before_html_part() {
+    // RFC 2046: least-faithful alternative first. Clients pick the last one
+    // they understand, so HTML must come after or nobody sees the formatting.
+    let mail = build_outgoing(&Outgoing {
+        from: "me@example.com".into(),
+        to: "you@example.com".into(),
+        subject: "Order".into(),
+        body: "plain version".into(),
+        html: Some("<p>html version</p>".into()),
+        ..Default::default()
+    })
+    .expect("builds");
+    let text = String::from_utf8(mail).expect("utf8");
+
+    let plain_at = text.find("text/plain").expect("plain part");
+    let html_at = text.find("text/html").expect("html part");
+    assert!(plain_at < html_at, "text/plain must come first");
+}
+
+#[test]
+fn html_with_attachments_nests_alternative_inside_mixed() {
+    let mail = build_outgoing(&Outgoing {
+        from: "me@example.com".into(),
+        to: "you@example.com".into(),
+        subject: "Both".into(),
+        body: "see attached".into(),
+        html: Some("<p>see <b>attached</b></p>".into()),
+        attachments: vec![attachment("a.txt", "text/plain", b"hi")],
+    })
+    .expect("builds");
+    let text = String::from_utf8(mail).expect("utf8");
+
+    assert!(text.contains("multipart/mixed"), "outer container");
+    assert!(text.contains("multipart/alternative"), "inner container");
+    assert!(text.contains("a.txt"), "attachment present");
+    assert!(text.contains("<b>attached</b>"), "html present");
+}
+
+#[test]
+fn no_html_still_sends_a_simple_plain_message() {
+    // Not every message is formatted; the simple path must not regress.
+    let mail = build_outgoing(&Outgoing {
+        from: "me@example.com".into(),
+        to: "you@example.com".into(),
+        subject: "Plain".into(),
+        body: "just words".into(),
+        html: None,
+        ..Default::default()
+    })
+    .expect("builds");
+    let text = String::from_utf8(mail).expect("utf8");
+
+    assert!(!text.contains("multipart"), "no container needed");
+    assert!(text.contains("just words"));
 }

@@ -2823,3 +2823,53 @@ textarea:focus-visible {
   font-size: 11px;
   text-align: center;
 }
+
+/* ===== Rich-text compose ============================================== */
+.fmt-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.fmt-bar button {
+  min-width: 27px;
+  padding: 4px 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.fmt-bar button:hover { background: var(--hover); color: var(--ink); }
+.fmt-sep { width: 1px; height: 16px; margin: 0 4px; background: var(--line-strong); }
+
+.compose-body {
+  min-height: 150px;
+  max-height: 42vh;
+  padding: 10px 12px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0 0 var(--radius) var(--radius);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.6;
+}
+
+.compose-body:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.compose-body a { color: var(--accent-soft); }
+.compose-body ul, .compose-body ol { margin: 6px 0; padding-left: 22px; }

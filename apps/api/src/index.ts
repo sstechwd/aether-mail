@@ -34,6 +34,7 @@ import { SignatureBook, applySignature } from "./signatures.js";
 import { harvestContacts, suggestContacts } from "./contacts.js";
 import { groupIntoThreads } from "./threading.js";
 import { parseJsonBody, asString, asStringArray } from "./reqbody.js";
+import { sanitizeComposedHtml, htmlToPlainText, hasFormatting } from "./compose-html.js";
 import { CalendarStore } from "./calendar.js";
 import { ImagePolicy } from "./imagepolicy.js";
 import { RuleBook } from "./rules.js";
@@ -152,7 +153,7 @@ const MAX_ATTACH_TOTAL = 24 * 1024 * 1024;
 /** Sanity cap on how many files one message can carry. */
 const MAX_ATTACHMENTS = 20;
 
-const pendingSends = new Map<string, { to: string; subject: string; body: string; accountId: string; expires: number; attachments?: string[]; sendAt?: number | null }>();
+const pendingSends = new Map<string, { to: string; subject: string; body: string; html?: string; accountId: string; expires: number; attachments?: string[]; sendAt?: number | null }>();
 
 /**
  * Inline image bytes, pulled on demand from the user's own IMAP server.
@@ -280,6 +281,8 @@ async function deliver(item: {
   to: string;
   subject: string;
   body: string;
+  /** Already-sanitized HTML; present only when the user formatted the mail. */
+  html?: string;
   attachments?: string[];
 }): Promise<{ ok: boolean; error?: string }> {
   const account = accounts.get(item.accountId);
@@ -295,7 +298,7 @@ async function deliver(item: {
       to: item.to,
       subject: item.subject,
     }),
-    JSON.stringify({ body: item.body, attachments: item.attachments ?? [] }),
+    JSON.stringify({ body: item.body, html: item.html, attachments: item.attachments ?? [] }),
   );
   return { ok: Boolean(result.ok), error: result.error };
 }
@@ -1430,6 +1433,7 @@ const server = http.createServer(async (req, res) => {
         draft?: { text?: string } | string;
         accountId?: string;
         attachments?: string[];
+        html?: string;
         sendAt?: number;
       };
       if (body.confirmId) {
@@ -1450,6 +1454,7 @@ const server = http.createServer(async (req, res) => {
             to: pending.to,
             subject: pending.subject,
             body: pending.body,
+            html: pending.html,
             attachments: pending.attachments ?? [],
             sendAt: pending.sendAt,
           });
@@ -1469,7 +1474,7 @@ const server = http.createServer(async (req, res) => {
           }),
           // JSON envelope so attachment paths never appear on argv, where any
           // process on the machine could read them.
-          JSON.stringify({ body: pending.body, attachments: pending.attachments ?? [] }),
+          JSON.stringify({ body: pending.body, html: pending.html, attachments: pending.attachments ?? [] }),
         );
         if (!sent.ok) {
           return json(res, 502, { error: "smtp_failed", message: sent.error }, origin);
@@ -1532,10 +1537,31 @@ const server = http.createServer(async (req, res) => {
           preview: prepared,
         }, origin);
       }
+      /*
+       * Formatted body.
+       *
+       * Sanitized HERE, at prepare, not at send: whatever survives this is
+       * exactly what the user sees in the two-click confirm preview, so the
+       * thing they approve is the thing that goes out. The plain part is
+       * derived from the sanitized HTML for the same reason.
+       *
+       * If there is no real formatting we drop the HTML entirely — a
+       * multipart/alternative whose HTML part is `<div>hi</div>` is noise.
+       */
+      const rawHtmlBody = asString(body.html, "", 200_000);
+      let safeHtml: string | undefined;
+      let plainBody = prepared.body;
+      if (rawHtmlBody && hasFormatting(rawHtmlBody)) {
+        safeHtml = sanitizeComposedHtml(rawHtmlBody);
+        const derived = htmlToPlainText(safeHtml);
+        if (derived.trim()) plainBody = derived;
+      }
+
       pendingSends.set(confirmId, {
         to: prepared.to,
         subject: prepared.subject,
-        body: prepared.body,
+        body: plainBody,
+        html: safeHtml,
         accountId,
         expires: Date.now() + 5 * 60 * 1000,
         attachments: attachPaths,

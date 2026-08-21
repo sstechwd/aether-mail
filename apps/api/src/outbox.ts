@@ -22,6 +22,8 @@ export type OutboxItem = {
   to: string;
   subject: string;
   body: string;
+  /** Sanitized HTML body when the user formatted the message. */
+  html?: string;
   attachments: string[];
   /** Epoch ms to send at, or null for "as soon as possible". */
   sendAt: number | null;
@@ -87,6 +89,7 @@ export class Outbox {
     to: string;
     subject: string;
     body: string;
+    html?: string;
     attachments?: string[];
     sendAt: number | null;
   }): OutboxItem {
@@ -96,6 +99,7 @@ export class Outbox {
       to: input.to,
       subject: input.subject,
       body: input.body,
+      html: input.html,
       attachments: input.attachments ?? [],
       sendAt: input.sendAt,
       status: "queued",
