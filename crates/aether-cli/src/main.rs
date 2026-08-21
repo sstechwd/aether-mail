@@ -523,19 +523,48 @@ fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
         attachments,
     })?;
 
-    let creds = lettre::transport::smtp::authentication::Credentials::new(user, secret);
+    /*
+     * SMTP auth.
+     *
+     * An `oauth2:` prefix means the secret is a bearer token, not a password,
+     * so lettre is told to use the XOAUTH2 mechanism explicitly. Left to its
+     * own devices it would negotiate PLAIN/LOGIN and hand Google a token in
+     * the password field, which fails with an unhelpful error.
+     *
+     * Password auth stays for the many servers that only speak LOGIN.
+     */
+    let use_xoauth2 = secret.starts_with("oauth2:");
+    let auth_secret = secret
+        .strip_prefix("oauth2:")
+        .unwrap_or(&secret)
+        .to_string();
+    let creds = lettre::transport::smtp::authentication::Credentials::new(user, auth_secret);
+
+    let build = |builder: lettre::transport::smtp::SmtpTransportBuilder| {
+        let b = builder.credentials(creds.clone());
+        if use_xoauth2 {
+            b.authentication(vec![
+                lettre::transport::smtp::authentication::Mechanism::Xoauth2,
+            ])
+        } else {
+            b
+        }
+    };
+
     let mailer = if smtp_port == 465 {
-        lettre::SmtpTransport::relay(&smtp_host)
-            .map_err(|e| e.to_string())?
-            .port(465)
-            .credentials(creds)
-            .build()
+        build(
+            lettre::SmtpTransport::relay(&smtp_host)
+                .map_err(|e| e.to_string())?
+                .port(465),
+        )
+        .build()
     } else {
-        lettre::SmtpTransport::starttls_relay(&smtp_host)
-            .map_err(|e| e.to_string())?
-            .port(smtp_port)
-            .credentials(creds)
-            .build()
+        build(
+            lettre::SmtpTransport::starttls_relay(&smtp_host)
+                .map_err(|e| e.to_string())?
+                .port(smtp_port),
+        )
+        .build()
     };
     // Send the raw RFC 5322 bytes we built, so multipart/attachments survive
     // exactly as composed. Envelope addresses are parsed separately.

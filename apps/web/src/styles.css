@@ -2916,3 +2916,13 @@ textarea:focus-visible {
 .proposal-actions { display: flex; gap: 8px; }
 .proposal-actions button { padding: 5px 12px; font-size: 13px; }
 .proposal-actions .subtle { background: transparent; border-color: var(--line-strong); color: var(--muted); }
+
+/* Provider sign-in: visually distinct from the password path. */
+.oauth-btn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.oauth-btn:hover:not(:disabled) { filter: brightness(1.08); }

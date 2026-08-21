@@ -155,6 +155,37 @@ export default function Settings(props: { onClose: () => void }) {
         {providerId === "custom" ? (
           <input placeholder="imap.example.com" value={imapHost} onChange={(e) => setImapHost(e.target.value)} />
         ) : null}
+        {/*
+          Sign in with the provider instead of a password.
+          Google and Microsoft are removing app passwords, so for those two
+          this is the path that keeps working. It opens the SYSTEM browser —
+          never an in-app window asking for a Google password, which is
+          indistinguishable from phishing.
+        */}
+        {providerId === "gmail" || providerId === "outlook" ? (
+          <button
+            className="oauth-btn"
+            disabled={saving}
+            onClick={() => {
+              setNote("Opening your browser…");
+              api<{ url?: string; error?: string; message?: string }>("/api/oauth/start", {
+                method: "POST",
+                body: JSON.stringify({ provider: providerId, email }),
+              })
+                .then((d) => {
+                  if (d.url) {
+                    window.open(d.url, "_blank", "noopener,noreferrer");
+                    setNote("Finish signing in in your browser, then come back.");
+                  } else {
+                    setNote(d.message ?? d.error ?? "Sign-in is not configured.");
+                  }
+                })
+                .catch((e: Error) => setNote(e.message));
+            }}
+          >
+            Sign in with {providerId === "gmail" ? "Google" : "Microsoft"}
+          </button>
+        ) : null}
         <button
           disabled={selected?.unsupported || saving}
           onClick={() => {

@@ -91,13 +91,22 @@ from Aether. That is the point of token auth over a stored password.
 - ✅ PKCE authorisation URL, loopback callback, code exchange, refresh
 - ✅ XOAUTH2 SASL for IMAP (`crates/aether-cli`, wire format pinned by a test
   in `mail-core`)
-- ✅ Token stored via the keyring path
-- ⏳ SMTP XOAUTH2 — sending still uses password auth
-- ⏳ Automatic refresh on a 401 mid-sync (refresh exists; the retry loop
-  around a failed sync does not)
-- ⏳ Account setup UI — the routes work; Settings still asks for a password
+- ✅ **XOAUTH2 for SMTP** — the mechanism is forced explicitly, because left to
+  negotiate lettre would pick PLAIN/LOGIN and hand Google a bearer token in
+  the password field, failing with an unhelpful error
+- ✅ Token stored via the keyring path; the short-lived access token is cached
+  separately (`tokencache.ts`) and the **refresh token never touches disk**
+- ✅ **"Sign in with Google / Microsoft" button** in Settings
+- ⏳ Automatic refresh on a 401 mid-sync — refresh exists and the cache knows
+  when a token is stale, but the sync loop does not yet retry on a rejection
+- ⏳ Not yet exercised against a live Google account: that needs a real client
+  id, which only the project owner can register
 
-**Honest summary:** the protocol work is done and verified against the real
-Google endpoint. What is missing is the last mile — a button in Settings, SMTP,
-and mid-sync retry. Until then this is reachable via the API but not yet the
-default path for a new account.
+**Honest summary:** the full protocol path is implemented and verified against
+the real Google authorisation endpoint — correct PKCE parameters, no client
+secret, loopback redirect, state validated, forged callbacks refused. Both IMAP
+and SMTP speak XOAUTH2, and there is a button.
+
+What has *not* happened is an end-to-end sign-in with a real Google account,
+because that requires a registered client id. Until someone runs that once,
+treat this as "implemented and unit-verified" rather than "known working".
