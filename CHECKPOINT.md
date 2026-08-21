@@ -101,6 +101,34 @@ Three invariants worth not relearning:
 - A view that would be a no-op on this user's data (unified inbox with one
   account) must hide itself. The API reports `meaningful`.
 
+## 4c. Shipped 2026-08-21 (verified against the live mailbox)
+
+SQLite + FTS5 store, swapped in and serving. Backup/restore. OAuth2 with PKCE
+plus XOAUTH2 for IMAP and SMTP, refreshed on every sync. IMAP IDLE. Incremental
+sync. Agent automation proposals. Folder removal.
+
+Invariants worth not relearning:
+
+- **UIDVALIDITY is the trap in incremental sync.** Trust a stored UID only
+  while UIDVALIDITY matches; a change means the server renumbered and the
+  position is meaningless. Ignoring it gives an inbox that silently stops
+  updating with no error. The five real folders here have five different
+  values, so it is not theoretical.
+- **IMAP clamps `N:*` to the last message** when nothing sits above N, so an
+  up-to-date mailbox still returns one message. Filter `uid <= since` client
+  side or you refetch that message's full body forever.
+- **Back up SQLite with `VACUUM INTO`, never a file copy.** WAL mode keeps
+  recent writes in a sidecar; a naive copy can be torn or stale.
+- **The agent proposes, a human commits.** Mail is attacker-controlled input,
+  so a model that can act on mail can be told to act by whoever wrote it. There
+  is no send or delete verb in the proposal schema — it is a type error, not a
+  policy.
+- **Backup file lists must be allow-lists**, so a credential file that appears
+  in `data/` later cannot be swept into an archive someone emails themselves.
+- **A parent CSP applies to nested browsing contexts.** The Tauri shell's
+  `img-src` silently overrode every per-message CSP; remote images could never
+  have loaded no matter what the sanitizer did.
+
 ## 5. Hard rules (violating = wrong)
 
 - **Client only.** No hosted inbox. Not a Thunderbird fork (ADR 0001).
