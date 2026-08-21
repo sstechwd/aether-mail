@@ -43,6 +43,7 @@ import { MuteBook } from "./mute.js";
 import { mergeAccounts } from "./unified.js";
 import { createBackup, listBackupContents, restoreBackup } from "./backup.js";
 import { parseProposal, describeProposal, PROPOSAL_SCHEMA } from "./agent-tools.js";
+import { providerOAuth, buildAuthUrl, exchangeCode } from "./oauth.js";
 import { TemplateBook } from "./templates.js";
 import { THEMES } from "./themes.js";
 import { usageSnapshot } from "./usage.js";
@@ -169,6 +170,16 @@ const MAX_ATTACH_TOTAL = 24 * 1024 * 1024;
 const MAX_ATTACHMENTS = 20;
 
 const pendingSends = new Map<string, { to: string; subject: string; body: string; html?: string; accountId: string; expires: number; attachments?: string[]; sendAt?: number | null }>();
+/**
+ * In-flight OAuth sign-ins, keyed by state.
+ *
+ * In memory on purpose: an interrupted sign-in should expire, not persist. Ten
+ * minutes is longer than any real consent screen takes.
+ */
+const pendingOAuth = new Map<
+  string,
+  { provider: string; verifier: string; email: string; expires: number }
+>();
 
 /**
  * Inline image bytes, pulled on demand from the user's own IMAP server.
@@ -810,6 +821,111 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(url.pathname.slice("/api/calendar/".length));
       const ok = calendar.remove(id);
       return json(res, ok ? 200 : 404, { removed: ok }, origin);
+    }
+
+    /*
+     * OAuth2 sign-in.
+     *
+     * Loopback redirect with PKCE, opened in the SYSTEM browser. Never an
+     * embedded webview: a window inside a mail client asking for a Google
+     * password is indistinguishable from phishing, and the system browser
+     * already holds the user's session and password manager. We never see the
+     * password — only a scoped token the user can revoke from their provider.
+     */
+    if (req.method === "POST" && url.pathname === "/api/oauth/start") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+
+      const provider = asString(body.provider, "", 40);
+      const cfg = providerOAuth(provider);
+      if (!cfg) return json(res, 400, { error: "provider_has_no_oauth" }, origin);
+
+      // The client id is not a secret (a desktop app cannot keep one) but it
+      // is per-deployment, so it is configured rather than hardcoded.
+      const clientId = process.env[`AETHER_OAUTH_CLIENT_${provider.toUpperCase()}`] ?? "";
+      if (!clientId) {
+        return json(
+          res,
+          501,
+          {
+            error: "no_client_id",
+            message:
+              `Set AETHER_OAUTH_CLIENT_${provider.toUpperCase()} to an OAuth client id ` +
+              `registered for a desktop/native app. See docs/OAUTH.md.`,
+            revokeHint: cfg.revokeHint,
+          },
+          origin,
+        );
+      }
+
+      const started = buildAuthUrl(cfg, clientId, PORT);
+      pendingOAuth.set(started.state, {
+        provider,
+        verifier: started.verifier,
+        email: asString(body.email, "", 200),
+        expires: Date.now() + 10 * 60_000,
+      });
+      audit.append({ actor: "user", action: "oauth.start", detail: provider });
+      return json(res, 200, { url: started.url, state: started.state }, origin);
+    }
+
+    /*
+     * The provider redirects the browser here with ?code=&state=.
+     *
+     * The state must match a flow we started: without that check another local
+     * process could feed us a code for an account the user never chose.
+     */
+    if (req.method === "GET" && url.pathname === "/oauth/callback") {
+      const code = url.searchParams.get("code") ?? "";
+      const state = url.searchParams.get("state") ?? "";
+      const pending = pendingOAuth.get(state);
+      pendingOAuth.delete(state);
+
+      const page = (msg: string): void => {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(
+          `<!doctype html><meta charset="utf-8"><title>Aether Mail</title>` +
+            `<body style="font:15px system-ui;padding:40px;max-width:30rem">` +
+            `<h2>Aether Mail</h2><p>${msg}</p>` +
+            `<p style="color:#666">You can close this tab.</p>`,
+        );
+      };
+
+      if (!code || !pending || pending.expires < Date.now()) {
+        page("Sign-in failed or expired. Start again from Aether.");
+        return;
+      }
+
+      const cfg = providerOAuth(pending.provider);
+      const clientId = process.env[`AETHER_OAUTH_CLIENT_${pending.provider.toUpperCase()}`] ?? "";
+      if (!cfg || !clientId) {
+        page("Sign-in is not configured.");
+        return;
+      }
+
+      const token = await exchangeCode(cfg, clientId, code, pending.verifier, PORT);
+      if (!token) {
+        page("The provider refused the sign-in. Please try again.");
+        return;
+      }
+
+      // Tokens go to the keyring like every other credential — never to JSON.
+      const stored = await runMailCli(
+        buildMailCliArgs({ action: "secret-put", secretRef: `oauth:${pending.provider}:${pending.email}` }),
+        JSON.stringify({
+          secret: `oauth2:${token.accessToken}`,
+          refresh: token.refreshToken ?? "",
+          expiresAt: token.expiresAt,
+        }),
+      );
+      audit.append({
+        actor: "user",
+        action: "oauth.complete",
+        detail: `${pending.provider} ${stored.ok ? "stored" : "store-failed"}`,
+      });
+      page(stored.ok ? "Signed in. Return to Aether." : "Signed in, but storing the token failed.");
+      return;
     }
 
     /*

@@ -565,6 +565,23 @@ fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
     Ok(())
 }
 
+/// SASL XOAUTH2 authenticator.
+///
+/// `imap` calls this to produce the initial client response. The secret is a
+/// short-lived OAuth access token, not a password.
+struct XOAuth2 {
+    email: String,
+    access_token: String,
+}
+
+impl imap::Authenticator for XOAuth2 {
+    type Response = String;
+    fn process(&self, _challenge: &[u8]) -> Self::Response {
+        // mail_core owns the wire format so it is pinned by one test.
+        mail_core::outgoing::xoauth2_sasl(&self.email, &self.access_token)
+    }
+}
+
 fn imap_login(
     host: &str,
     port: u16,
@@ -591,6 +608,23 @@ fn imap_login(
     } else {
         imap::connect((host, port), host, &connector).map_err(|e| e.to_string())?
     };
+
+    /*
+     * An OAuth access token arrives prefixed so the CLI can tell it apart from
+     * a password without a second argument. Google and Microsoft are retiring
+     * app passwords, but plenty of servers still only speak LOGIN, so both
+     * paths stay.
+     */
+    if let Some(token) = secret.strip_prefix("oauth2:") {
+        let auth = XOAuth2 {
+            email: user.to_string(),
+            access_token: token.to_string(),
+        };
+        return client
+            .authenticate("XOAUTH2", &auth)
+            .map_err(|e| e.0.to_string());
+    }
+
     client.login(user, secret).map_err(|e| e.0.to_string())
 }
 

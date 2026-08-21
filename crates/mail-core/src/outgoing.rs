@@ -92,6 +92,20 @@ pub fn guess_mime(filename: &str) -> &'static str {
     }
 }
 
+/// Build the SASL XOAUTH2 initial response for IMAP and SMTP.
+///
+/// Google and Microsoft are retiring app passwords, so bearer-token auth is
+/// the path that keeps working. The wire format is exact — a wrong separator
+/// fails with an opaque server error rather than a useful one — so it is
+/// pinned by a test.
+///
+/// The token is a short-lived access token, never the user's password. We
+/// never see the password at all: the system browser handles the login.
+pub fn xoauth2_sasl(email: &str, access_token: &str) -> String {
+    let raw = format!("user={email}\x01auth=Bearer {access_token}\x01\x01");
+    base64::engine::general_purpose::STANDARD.encode(raw.as_bytes())
+}
+
 /// Render RFC 5322 bytes ready to hand to SMTP.
 pub fn build_outgoing(mail: &Outgoing) -> Result<Vec<u8>, String> {
     let to = header_safe(&mail.to);

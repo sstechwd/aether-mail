@@ -221,3 +221,33 @@ fn no_html_still_sends_a_simple_plain_message() {
     assert!(!text.contains("multipart"), "no container needed");
     assert!(text.contains("just words"));
 }
+
+// ---------------------------------------------------------------------------
+// XOAUTH2.
+//
+// Google and Microsoft are retiring app passwords, so IMAP and SMTP have to
+// authenticate with a bearer token. The SASL initial response is a fixed
+// shape and getting a separator wrong fails with an opaque server error, so
+// it is pinned here.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn xoauth2_has_the_exact_sasl_shape() {
+    let s = mail_core::outgoing::xoauth2_sasl("me@example.com", "tok123");
+    let decoded = String::from_utf8(
+        base64_decode(&s).expect("valid base64"),
+    )
+    .expect("utf8");
+    assert_eq!(decoded, "user=me@example.com\x01auth=Bearer tok123\x01\x01");
+}
+
+#[test]
+fn xoauth2_is_base64() {
+    let s = mail_core::outgoing::xoauth2_sasl("a@b.c", "t");
+    assert!(s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
+}
+
+fn base64_decode(s: &str) -> Option<Vec<u8>> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.decode(s).ok()
+}
