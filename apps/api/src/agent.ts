@@ -119,9 +119,30 @@ export async function completeLocal(opts: {
       method: "POST",
       headers: req.headers,
       body: JSON.stringify(req.body),
+      // A metered API that hangs is worse than one that fails.
+      signal: AbortSignal.timeout(60_000),
     });
-    if (!res.ok) throw new Error(`LLM ${res.status}: provider rejected the request`);
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = await res.text();
+    if (!res.ok) {
+      /*
+       * Surface the provider's own message.
+       *
+       * "LLM 400: provider rejected the request" is useless — the real reason
+       * is almost always something the user can fix ("Incorrect API key",
+       * "model not found", "insufficient quota") and the provider already
+       * said it. Throwing it away turns a one-second fix into a support
+       * question.
+       */
+      let detail = "";
+      try {
+        const err = JSON.parse(raw) as { error?: { message?: string } | string };
+        detail = typeof err.error === "string" ? err.error : (err.error?.message ?? "");
+      } catch {
+        detail = raw.slice(0, 200);
+      }
+      throw new Error(detail || `LLM ${res.status}: provider rejected the request`);
+    }
+    const data = JSON.parse(raw) as { choices?: Array<{ message?: { content?: string } }> };
     const text = (data.choices?.[0]?.message?.content ?? "").trim();
     recordUsage({ promptChars: opts.prompt.length, completion: estimateTokens(text), cap: 80 });
     return { text, model };

@@ -393,6 +393,18 @@ export default function Settings(props: { onClose: () => void }) {
           >
             OpenAI
           </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              // xAI speaks the OpenAI shape, so no special client is needed.
+              setBaseUrl("https://api.x.ai/v1");
+              setModel("grok-4");
+              setAllowCloud(true);
+            }}
+          >
+            Grok
+          </button>
         </div>
         <label>
           Base URL
@@ -406,6 +418,20 @@ export default function Settings(props: { onClose: () => void }) {
           <input type="checkbox" checked={allowCloud} onChange={(e) => setAllowCloud(e.target.checked)} />
           Allow a non-localhost model (sends the open message to that URL)
         </label>
+        {/*
+          Say plainly what a cloud model means. The checkbox label alone
+          under-sells it: the actual content of a message you open — including
+          anything private in it — is uploaded to that provider.
+        */}
+        {allowCloud && !baseUrl.includes("127.0.0.1") && !baseUrl.includes("localhost") ? (
+          <p className="cloud-warn">
+            The text of whichever message you run the agent on is sent to{" "}
+            <strong>{(() => { try { return new URL(baseUrl).hostname; } catch { return baseUrl; } })()}</strong>,
+            along with any notes the assistant has saved about that sender. Only that one message,
+            only when you press a button — never your whole mailbox, and never in the background.
+            Your mail is still stored only on this machine.
+          </p>
+        ) : null}
         <button
           onClick={() => {
             setNote(null);

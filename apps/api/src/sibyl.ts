@@ -43,7 +43,18 @@ export class SibylMemory {
   async promptBlock(query: string): Promise<string> {
     const lines = await this.recall(query);
     if (!lines.length) return "";
-    return `Sibyl memory (local, not uploaded):\n${lines.slice(0, 6).join("\n")}`.slice(0, 900);
+    /*
+     * Do NOT label this "not uploaded".
+     *
+     * It used to say exactly that, which was false: this block is pasted into
+     * the prompt, so with a cloud model it goes to the provider along with the
+     * message. Telling a user their notes stay local while shipping them to
+     * Anthropic is the kind of assurance that destroys trust when noticed.
+     *
+     * The honest control is Settings: a local model uploads nothing, and the
+     * cloud warning names the host that receives it.
+     */
+    return `Notes from earlier:\n${lines.slice(0, 6).join("\n")}`.slice(0, 900);
   }
 
   async journal(acted: string): Promise<void> {
