@@ -2,6 +2,8 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { appRoot } from "./approot.js";
+import { chooseDataDir } from "./datadir.js";
+import { migrateDataDir } from "./datamigrate.js";
 import { FIXTURE_ACCOUNT, FIXTURE_MAIL } from "./fixture.js";
 import { runAgent, chatWithMail, type AgentSkill } from "./agent.js";
 import { SqlStore } from "./sqlstore.js";
@@ -62,7 +64,44 @@ import { applyWorkflows, compileWorkflows, WorkflowBook } from "./workflows.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
 const here = appRoot();
-const dataFile = process.env.AETHER_MAIL_FILE ?? path.join(here, "data/mail.json");
+
+/*
+ * Where the user's mail lives.
+ *
+ * Not beside the executable: a real install puts that inside the program
+ * directory, where an uninstall can take the mailbox with it. A source tree
+ * keeps using ./data so development and the existing mailbox are unchanged;
+ * an install uses the OS user-data location.
+ *
+ * If a previous build left mail in the program directory we copy it across
+ * once — copy, never move, so a bad migration cannot lose anything.
+ */
+const dataChoice = chooseDataDir({
+  appRoot: here,
+  platform: process.platform,
+  env: process.env as Record<string, string | undefined>,
+  exists: fs.existsSync,
+});
+const dataDir = dataChoice.dir;
+fs.mkdirSync(dataDir, { recursive: true });
+
+if (dataChoice.legacy) {
+  const moved = migrateDataDir(dataChoice.legacy, dataDir);
+  if (moved.migrated) {
+    console.log(`data: migrated ${moved.files} file(s) from ${dataChoice.legacy} to ${dataDir}`);
+    console.log(`data: the old copy was left in place and can be deleted once you are happy`);
+  } else if (moved.reason === "failed") {
+    console.warn(`data: migration failed (${moved.error}); still using ${dataDir}`);
+  }
+}
+console.log(`data: ${dataDir} (${dataChoice.source})`);
+
+/** A file inside the user's data directory. */
+function dataPath(...parts: string[]): string {
+  return path.join(dataDir, ...parts);
+}
+
+const dataFile = process.env.AETHER_MAIL_FILE ?? dataPath("mail.json");
 /*
  * Mail lives in SQLite.
  *
@@ -74,7 +113,7 @@ const dataFile = process.env.AETHER_MAIL_FILE ?? path.join(here, "data/mail.json
  * AETHER_MAIL_FILE still points at the JSON path so the migration knows where
  * to look; the database sits beside it.
  */
-const dbFile = process.env.AETHER_MAIL_DB ?? path.join(here, "data/mail.db");
+const dbFile = process.env.AETHER_MAIL_DB ?? dataPath("mail.db");
 const store = SqlStore.openFile(dbFile, dataFile);
 if (store.listFolders(FIXTURE_ACCOUNT.id).length === 0) {
   store.loadFixture(FIXTURE_MAIL);
@@ -86,21 +125,21 @@ store.ensureFolder(FIXTURE_ACCOUNT.id, "Spam");
 store.ensureFolder(FIXTURE_ACCOUNT.id, "Archive");
 store.ensureFolder(FIXTURE_ACCOUNT.id, "Trash");
 store.ensureFolder(FIXTURE_ACCOUNT.id, "Drafts");
-const accounts = new AccountBook(path.join(here, "data/accounts.json"));
-const llm = new LlmSettings(path.join(here, "data/llm.json"));
-const workflows = new WorkflowBook(path.join(here, "data/workflows.json"));
-const audit = new AuditLog(path.join(here, "data/audit.jsonl"));
-const persona = new PersonaBook(path.join(here, "data/persona.json"));
-const sibyl = new SibylMemory(path.join(here, "data/sibyl.db"));
-const templates = new TemplateBook(path.join(here, "data/templates.json"));
-const inspectPrefs = new InspectBook(path.join(here, "data/inspect.json"));
-const outbox = Outbox.openFile(path.join(here, "data/outbox.json"));
-const signatures = SignatureBook.openFile(path.join(here, "data/signatures.json"));
-const calendar = CalendarStore.openFile(path.join(here, "data/calendar.json"));
-const imagePolicy = ImagePolicy.openFile(path.join(here, "data/images.json"));
-const ruleBook = RuleBook.openFile(path.join(here, "data/rules.json"));
-const snoozeBook = SnoozeBook.openFile(path.join(here, "data/snooze.json"));
-const muteBook = MuteBook.openFile(path.join(here, "data/mute.json"));
+const accounts = new AccountBook(dataPath("accounts.json"));
+const llm = new LlmSettings(dataPath("llm.json"));
+const workflows = new WorkflowBook(dataPath("workflows.json"));
+const audit = new AuditLog(dataPath("audit.jsonl"));
+const persona = new PersonaBook(dataPath("persona.json"));
+const sibyl = new SibylMemory(dataPath("sibyl.db"));
+const templates = new TemplateBook(dataPath("templates.json"));
+const inspectPrefs = new InspectBook(dataPath("inspect.json"));
+const outbox = Outbox.openFile(dataPath("outbox.json"));
+const signatures = SignatureBook.openFile(dataPath("signatures.json"));
+const calendar = CalendarStore.openFile(dataPath("calendar.json"));
+const imagePolicy = ImagePolicy.openFile(dataPath("images.json"));
+const ruleBook = RuleBook.openFile(dataPath("rules.json"));
+const snoozeBook = SnoozeBook.openFile(dataPath("snooze.json"));
+const muteBook = MuteBook.openFile(dataPath("mute.json"));
 
 /*
  * OAuth access tokens, and how to renew them.
@@ -109,13 +148,13 @@ const muteBook = MuteBook.openFile(path.join(here, "data/mute.json"));
  * the OS keyring. Dependencies are passed as an object so the refresh decision
  * logic stays unit-testable without a network or a keyring.
  */
-const tokenCache = TokenCache.openFile(path.join(here, "data/tokens.json"));
+const tokenCache = TokenCache.openFile(dataPath("tokens.json"));
 
 /*
  * Where each folder's sync got to, so a fetch asks only for what is new
  * instead of pulling the newest 40 with full bodies every few minutes.
  */
-const syncState = SyncState.openFile(path.join(here, "data/syncstate.json"));
+const syncState = SyncState.openFile(dataPath("syncstate.json"));
 
 const refreshDeps: RefreshDeps = {
   clientIdFor: (provider) => process.env[`AETHER_OAUTH_CLIENT_${provider.toUpperCase()}`] ?? "",
@@ -161,7 +200,7 @@ function wakeSnoozed(): void {
  * store: the message they came from is still there, so without this list a
  * removed contact would reappear on the next sync.
  */
-const hiddenContactsPath = path.join(here, "data/hidden-contacts.json");
+const hiddenContactsPath = dataPath("hidden-contacts.json");
 function readHiddenContacts(): string[] {
   try {
     const rows = JSON.parse(fs.readFileSync(hiddenContactsPath, "utf8")) as string[];
@@ -175,7 +214,7 @@ function writeHiddenContacts(rows: string[]): void {
   fs.writeFileSync(hiddenContactsPath, JSON.stringify([...new Set(rows)]), "utf8");
 }
 const chat = new ChatThread();
-const metaPath = path.join(here, "data/meta.json");
+const metaPath = dataPath("meta.json");
 type MetaFile = { lastFetchAt?: string; activeAccountId?: string };
 function readMeta(): MetaFile {
   try {
@@ -1501,7 +1540,7 @@ const server = http.createServer(async (req, res) => {
       const dest = asString(body.dest, "", 500) || path.join(here, "backups");
       try {
         fs.mkdirSync(dest, { recursive: true });
-        const result = createBackup(path.join(here, "data"), dest);
+        const result = createBackup(dataDir, dest);
         audit.append({
           actor: "user",
           action: "backup.create",
@@ -1545,7 +1584,7 @@ const server = http.createServer(async (req, res) => {
       const from = asString(body.path, "", 500);
       if (!from) return json(res, 400, { error: "no_path" }, origin);
       try {
-        const result = restoreBackup(from, path.join(here, "data"));
+        const result = restoreBackup(from, dataDir);
         audit.append({ actor: "user", action: "backup.restore", detail: from.slice(0, 80) });
         return json(res, 200, { ...result, restartRequired: true }, origin);
       } catch (e) {
