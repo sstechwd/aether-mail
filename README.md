@@ -3,12 +3,13 @@
 A local-first desktop email client with an optional on-device agent.
 Thunderbird-shaped mail, and an assistant that can read and draft but **cannot send**.
 
-Your mailbox stays on your machine. Passwords live in the OS keyring. The agent runs
-against a local model by default, so nothing has to leave the building.
+Your mailbox stays on your machine. Passwords live in the OS keyring. The agent
+can run on a local model, or you can sign in with SuperGrok / paste a BYOK key.
+Cloud models stay off until you opt in.
 
 > **Status: early.** Reading real mail works well. It is not yet a daily driver for
-> everyone — no OAuth yet, so work/school accounts that block app passwords will not
-> connect. See [Limitations](#limitations) before you download.
+> everyone — Gmail/Outlook **mail** login is still app-password, not OAuth, so some
+> work/school accounts will not connect. See [Limitations](#limitations).
 
 ---
 
@@ -56,17 +57,20 @@ that is four commands — see [Build from source](#build-from-source).
   click Load, so tracking pixels stay dark
 - **Header inspection** — SPF/DKIM/DMARC, From vs Return-Path, opens automatically
   on suspicious mail
-- **Spoken workflows** — "star anything from my landlord" compiles locally, no LLM
-- **Agent (BYOK or local Ollama)** — summarize, draft a reply, triage.
-  It proposes; **sending always takes two human clicks.**
+- **Spoken workflows and rules** — “star invoices”, “make a folder called Receipts”,
+  “always file this sender to Receipts”. Compiles locally. Rules never send.
+- **Drag a message onto a folder** — pointer drag (HTML5 DnD does not work in the
+  Windows webview). Toolbar **Move to…** and **File this sender…** if you prefer clicks.
+- **Agent (local Ollama, SuperGrok sign-in, or BYOK Claude/OpenAI)** — summarize,
+  draft, triage. It can file mail you asked it to. **Sending always takes two human clicks.**
 - **Local memory + 30-day audit log**, no message bodies stored in either
 
 ## What it deliberately does not do
 
 - **Host your mail.** There is no Aether inbox. It is a client for accounts you
   already have.
-- **Send on its own.** No auto-reply, no scheduled sends. The model cannot click
-  Confirm — that is enforced in code, not in a prompt.
+- **Send on its own.** No auto-reply. You can queue “send later”; the model still
+  cannot click Confirm — that is enforced in code, not in a prompt.
 - **Phone home.** No telemetry. Cloud models require an explicit per-account opt-in.
 
 ---
@@ -75,7 +79,7 @@ that is four commands — see [Build from source](#build-from-source).
 
 | | |
 |---|---|
-| **No OAuth yet** | Gmail/Outlook need an [app password](https://support.google.com/accounts/answer/185833). Many work/school tenants block those — you will not be able to connect. OAuth is the next major feature. |
+| **No mail OAuth yet** | Gmail/Outlook **accounts** still need an [app password](https://support.google.com/accounts/answer/185833). SuperGrok (the **model**, not the mailbox) can sign in with X Premium+. |
 | **Unsigned installer** | SmartScreen warning, see above. |
 | **Windows only for now** | The stack is cross-platform; nobody has built and tested the macOS/Linux bundles yet. |
 | **Large download** | ~25MB, most of which is a bundled Node runtime for the temporary API layer. Porting it to Rust will cut this to ~8MB. |
