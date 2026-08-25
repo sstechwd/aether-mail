@@ -12,6 +12,8 @@ export type UserCommand =
   | { action: "create_folder"; name: string }
   | { action: "need_folder_name" }
   | { action: "refuse_filesystem" }
+  | { action: "move_open"; folder: string }
+  | { action: "rule_from_open"; then: "move"; folder: string }
   | {
       action: "create_rule";
       field: "from" | "to" | "subject";
@@ -61,6 +63,22 @@ export function parseUserCommand(spoken: string): UserCommand | null {
   }
 
   if (FORBIDDEN.test(text)) return null;
+
+  const alwaysThis = text.match(
+    /^(?:please\s+)?always\s+(?:file|put|move)\s+(?:this\s+sender|mail\s+like\s+this|this)\s+(?:to|into|in)\s+(.+)$/i,
+  );
+  if (alwaysThis) {
+    const folder = cleanFolder(alwaysThis[1]);
+    if (folder) return { action: "rule_from_open", then: "move", folder };
+  }
+
+  const moveOpen = text.match(
+    /^(?:please\s+)?(?:move|put|file)\s+(?:this(?:\s+mail|\s+message)?|it)\s+(?:to|into|in)\s+(.+)$/i,
+  );
+  if (moveOpen) {
+    const folder = cleanFolder(moveOpen[1]);
+    if (folder) return { action: "move_open", folder };
+  }
 
   const rule = text.match(
     /^(?:please\s+)?(?:make|create|add)\s+(?:a\s+)?rule\s+(?:that\s+)?(?:files|moves|puts)\s+(?:mail\s+)?(?:from\s+)?(.+?)\s+(?:to|into)\s+(.+)$/i,

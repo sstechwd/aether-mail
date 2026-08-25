@@ -46,7 +46,7 @@ import {
 } from "./attachments.js";
 import { buildReply, buildForward } from "./reply.js";
 import { Outbox } from "./outbox.js";
-import { canonicalFolder, pickSyncFolders, sortFolders } from "./folders.js";
+import { canonicalFolder, pickSyncFolders, sortFolders, safeMoveFolder } from "./folders.js";
 import { isCalendarPart, parseIcs, toIcsFile } from "./ics.js";
 import { SignatureBook, applySignature } from "./signatures.js";
 import { harvestContacts, suggestContacts } from "./contacts.js";
@@ -762,7 +762,8 @@ const server = http.createServer(async (req, res) => {
         const msg = store.getMessage(id);
         if (!msg) continue;
         if (action === "move") {
-          store.move(id, moveTo);
+        store.ensureFolder(activeAccountId, moveTo);
+        store.move(id, moveTo);
         } else if (action === "read") {
           store.markRead(id);
         } else if (action === "unread") {
@@ -783,10 +784,13 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(url.pathname.slice("/api/messages/".length, -"/move".length));
       const raw = await readBody(req);
       const body = JSON.parse(raw || "{}") as { folder?: string };
-      const folder = body.folder === "Trash" || body.folder === "Archive" || body.folder === "INBOX" ? body.folder : "";
-      if (!folder) return json(res, 400, { error: "folder must be INBOX|Archive|Trash" }, origin);
+      const folder = safeMoveFolder(body.folder);
+      if (!folder) return json(res, 400, { error: "need a mail folder name" }, origin);
+      store.ensureFolder(activeAccountId, folder);
       store.move(id, folder);
-      return json(res, 200, { message: store.getMessage(id), folders: store.listFolders(FIXTURE_ACCOUNT.id) }, origin);
+      store.saveNow();
+      audit.append({ actor: "user", action: "message.move", detail: folder });
+      return json(res, 200, { message: store.getMessage(id), folders: store.listFolders(activeAccountId) }, origin);
     }
 
     if (req.method === "POST" && url.pathname.endsWith("/unread") && url.pathname.startsWith("/api/messages/")) {
@@ -2346,6 +2350,59 @@ const server = http.createServer(async (req, res) => {
             store.saveNow();
             audit.append({ actor: "user", action: "folder.create", detail: cmd.name });
             const summary = `Created the mail folder “${cmd.name}”. It is in the folder list now.`;
+            chat.add("assistant", summary);
+            return json(res, 200, { turns: chat.list(), result: { text: summary, model: "command", refused: [] } }, origin);
+          }
+          if (cmd.action === "move_open") {
+            if (!mail) {
+              const summary = `Open a message first, then say “move this to ${cmd.folder}”.`;
+              chat.add("assistant", summary);
+              return json(res, 200, { turns: chat.list(), result: { text: summary, model: "command", refused: [] } }, origin);
+            }
+            store.ensureFolder(activeAccountId, cmd.folder);
+            store.move(mail.id, cmd.folder);
+            store.saveNow();
+            audit.append({ actor: "user", action: "message.move", detail: cmd.folder });
+            const summary = `Moved “${mail.subject || "(no subject)"}” to ${cmd.folder}.`;
+            chat.add("assistant", summary);
+            return json(res, 200, { turns: chat.list(), result: { text: summary, model: "command", refused: [] } }, origin);
+          }
+          if (cmd.action === "rule_from_open") {
+            if (!mail) {
+              const summary = `Open a message first, then say “always file this sender to ${cmd.folder}”.`;
+              chat.add("assistant", summary);
+              return json(res, 200, { turns: chat.list(), result: { text: summary, model: "command", refused: [] } }, origin);
+            }
+            const angled = /<([^>]+)>/.exec(mail.from ?? "");
+            const contains = (angled ? angled[1] : mail.from ?? "").trim().slice(0, 200);
+            if (!contains) {
+              const summary = "This message has no sender I can file on.";
+              chat.add("assistant", summary);
+              return json(res, 200, { turns: chat.list(), result: { text: summary, model: "command", refused: [] } }, origin);
+            }
+            store.ensureFolder(activeAccountId, cmd.folder);
+            const rule = ruleBook.add({
+              field: "from",
+              contains,
+              action: "move",
+              folder: cmd.folder,
+              enabled: true,
+            });
+            let filed = 0;
+            for (const msg of store.listMessages(activeAccountId, "INBOX", "newest")) {
+              const hit = ruleBook.apply({
+                from: msg.from ?? "",
+                to: msg.to ?? "",
+                subject: msg.subject ?? "",
+                folder: msg.folder ?? "INBOX",
+              });
+              if (!hit || hit.id !== rule.id) continue;
+              if (hit.folder) store.move(msg.id, hit.folder);
+              filed += 1;
+            }
+            store.saveNow();
+            audit.append({ actor: "user", action: "rule.add", detail: `from ~ ${contains} → ${cmd.folder}` });
+            const summary = `Rule saved: mail from ${contains} goes to “${cmd.folder}”. Filed ${filed} existing message(s). See Rules in the sidebar.`;
             chat.add("assistant", summary);
             return json(res, 200, { turns: chat.list(), result: { text: summary, model: "command", refused: [] } }, origin);
           }

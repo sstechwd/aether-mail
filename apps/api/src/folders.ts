@@ -114,3 +114,18 @@ export function sortFolders<T extends { name: string }>(folders: T[]): T[] {
   };
   return [...folders].sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
 }
+
+/**
+ * A folder a message may be moved into.
+ *
+ * Drag-and-drop used to fail on any user folder because the HTTP move
+ * route only allowed INBOX / Archive / Trash. Any mailbox name is fine;
+ * a path is not.
+ */
+export function safeMoveFolder(raw: string | undefined): string | null {
+  const name = (raw ?? "").trim();
+  if (!name || name.length > 80) return null;
+  if (/[\\/]|\.\./.test(name)) return null;
+  if (!/^[A-Za-z0-9][A-Za-z0-9 ._[\]-]*$/.test(name)) return null;
+  return name;
+}

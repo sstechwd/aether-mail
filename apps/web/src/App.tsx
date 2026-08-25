@@ -1373,23 +1373,6 @@ export default function App() {
     }
   }
 
-  /** Move any message by id — used by drag-and-drop onto a folder. */
-  async function moveMessage(id: string, dest: string): Promise<void> {
-    try {
-      const data = await api<{ folders: Folder[] }>(`/api/messages/${id}/move`, {
-        method: "POST",
-        body: JSON.stringify({ folder: dest }),
-      });
-      setFolders(data.folders);
-      setMessages((ms) => ms.filter((m) => m.id !== id));
-      if (selectedId === id) setSelectedId(null);
-      setSendNote(`Moved to ${dest}.`);
-      window.setTimeout(() => setSendNote(null), 1800);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
   /** Trust this sender's images from now on. */
   async function trustSenderImages(): Promise<void> {
     if (!selected) return;
@@ -1835,6 +1818,7 @@ export default function App() {
         ) : null}
         {accountNote ? <p className="hint">{accountNote}</p> : null}
         <p className="acct">Folders</p>
+        {dragMsg ? <p className="hint">Drop on a folder to move</p> : null}
         <button
           className="folder"
           onClick={() => {
@@ -1861,9 +1845,6 @@ export default function App() {
               void removeFolder(f.name);
             }}
             onDragOver={(e) => {
-              // Only a real message drag may drop here, and never onto the
-              // folder it already lives in.
-              if (!dragMsg || f.name === folder) return;
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
               setDropFolder(f.name);
@@ -1871,10 +1852,13 @@ export default function App() {
             onDragLeave={() => setDropFolder((d) => (d === f.name ? null : d))}
             onDrop={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               const id = e.dataTransfer.getData("text/plain") || dragMsg;
               setDropFolder(null);
               setDragMsg(null);
-              if (id) void moveMessage(id, f.name);
+              if (!id) return;
+              const ids = picked.includes(id) && picked.length > 0 ? picked : [id];
+              void bulkAction(ids, "move", f.name);
             }}
             onClick={() => {
               setFolder(f.name);
@@ -2410,8 +2394,10 @@ export default function App() {
         ) : (
           <>
             {visible.map((m) => (
-          <button
+          <div
             key={m.id}
+            role="button"
+            tabIndex={0}
             className={`row${m.id === selectedId ? " on" : ""}${m.unread ? " unread" : ""}${
               dragMsg === m.id ? " dragging" : ""
             }${picked.includes(m.id) ? " picked" : ""}`}
@@ -2426,10 +2412,19 @@ export default function App() {
               setDragMsg(m.id);
               e.dataTransfer.effectAllowed = "move";
               e.dataTransfer.setData("text/plain", m.id);
+              e.dataTransfer.setData("application/x-aether-message", m.id);
             }}
             onDragEnd={() => {
               setDragMsg(null);
               setDropFolder(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setPicked([]);
+                setAnchorId(m.id);
+                setSelectedId(m.id);
+              }
             }}
             onClick={(e) => {
               // Ctrl/Cmd toggles one row; Shift extends from the anchor.
@@ -2471,7 +2466,7 @@ export default function App() {
             </span>
             <span className="when">{formatWhen(m.date)}</span>
             {m.preview ? <span className="peek">{m.preview}</span> : null}
-          </button>
+          </div>
         ))}
         {visible.length === 0 ? <p className="empty">{unreadOnly ? "No unread in this folder." : "No messages."}</p> : null}
           </>
@@ -2634,12 +2629,24 @@ export default function App() {
               Ask about your mail without opening a message. Runs on your own key or a local model —
               nothing leaves this machine unless you configured a hosted one.
             </p>
-            <AgentChat messageId={null} onStoreChange={() => void refreshFolders()} />
+            <AgentChat
+              messageId={null}
+              onStoreChange={() => {
+                void refreshFolders();
+                void refreshMessages(folder);
+              }}
+            />
           </div>
         ) : !selected ? (
           <>
             <p className="empty tall">Select a message. Chat still works on whatever you open next.</p>
-            <AgentChat messageId={null} onStoreChange={() => void refreshFolders()} />
+            <AgentChat
+              messageId={null}
+              onStoreChange={() => {
+                void refreshFolders();
+                void refreshMessages(folder);
+              }}
+            />
           </>
         ) : (
           <>
@@ -2980,7 +2987,13 @@ export default function App() {
                 {sendNote ? <span className="note">{sendNote}</span> : null}
               </div>
             </section>
-            <AgentChat messageId={selected.id} onStoreChange={() => void refreshFolders()} />
+            <AgentChat
+              messageId={selected.id}
+              onStoreChange={() => {
+                void refreshFolders();
+                void refreshMessages(folder);
+              }}
+            />
           </>
         )}
         {error ? <p className="error">{error}</p> : null}

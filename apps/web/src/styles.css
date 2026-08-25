@@ -2633,7 +2633,11 @@ textarea:focus-visible {
 :root[data-theme="paper"] ::-webkit-scrollbar-thumb { background: #d0d0c9; }
 
 /* ===== Drag a message onto a folder ================================== */
-.row[draggable="true"] { cursor: grab; }
+.row[draggable="true"] {
+  cursor: grab;
+  -webkit-user-drag: element;
+  user-select: none;
+}
 .row.dragging { opacity: 0.45; cursor: grabbing; }
 
 /* The folder you are hovering while dragging. */

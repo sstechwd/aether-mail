@@ -60,4 +60,23 @@ describe("parseUserCommand", () => {
     expect(parseUserCommand("make a rule that deletes amazon")).toBeNull();
     expect(parseUserCommand("send a reply to everyone")).toBeNull();
   });
+
+  it("moves the open message to a named folder", () => {
+    expect(parseUserCommand("move this to Receipts")).toEqual({ action: "move_open", folder: "Receipts" });
+    expect(parseUserCommand("put this in Archive")).toEqual({ action: "move_open", folder: "Archive" });
+    expect(parseUserCommand("file this to Bills")).toEqual({ action: "move_open", folder: "Bills" });
+  });
+
+  it("makes a rule from the open sender", () => {
+    expect(parseUserCommand("always file this sender to Receipts")).toEqual({
+      action: "rule_from_open",
+      then: "move",
+      folder: "Receipts",
+    });
+    expect(parseUserCommand("always put mail like this in Bills")).toEqual({
+      action: "rule_from_open",
+      then: "move",
+      folder: "Bills",
+    });
+  });
 });

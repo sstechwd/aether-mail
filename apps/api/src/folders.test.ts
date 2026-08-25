@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalFolder, pickSyncFolders, FOLDER_ORDER } from "./folders.js";
+import { canonicalFolder, pickSyncFolders, FOLDER_ORDER, safeMoveFolder } from "./folders.js";
 
 /**
  * IMAP folder names are provider-specific. Gmail uses "[Gmail]/Sent Mail",
@@ -95,5 +95,19 @@ describe("FOLDER_ORDER", () => {
     expect(FOLDER_ORDER.indexOf("Outbox")).toBeLessThan(FOLDER_ORDER.indexOf("Trash"));
     expect(FOLDER_ORDER).toContain("Sent");
     expect(FOLDER_ORDER).toContain("Drafts");
+  });
+});
+
+describe("safeMoveFolder", () => {
+  it("accepts any mailbox folder, not just Inbox/Archive/Trash", () => {
+    expect(safeMoveFolder("Receipts")).toBe("Receipts");
+    expect(safeMoveFolder("INBOX")).toBe("INBOX");
+    expect(safeMoveFolder("Archive")).toBe("Archive");
+  });
+
+  it("refuses a path or an empty name", () => {
+    expect(safeMoveFolder("../etc")).toBeNull();
+    expect(safeMoveFolder("")).toBeNull();
+    expect(safeMoveFolder("a/b")).toBeNull();
   });
 });
