@@ -107,6 +107,10 @@ describe("providerFor", () => {
     ["https://api.openai.com/v1", "openai-compatible"],
     ["http://127.0.0.1:11434", "ollama"],
     ["http://localhost:11434/", "ollama"],
+    // Local does NOT mean Ollama: llama.cpp, LM Studio and vLLM serve the
+    // OpenAI shape on localhost and announce it with a /v1 path.
+    ["http://127.0.0.1:11434/v1", "openai-compatible"],
+    ["http://localhost:8080/v1/", "openai-compatible"],
   ])("detects %s as %s", (url, want) => {
     expect(providerFor(url)).toBe(want);
   });

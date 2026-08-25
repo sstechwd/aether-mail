@@ -2091,10 +2091,12 @@ const server = http.createServer(async (req, res) => {
               buildMailCliArgs({ action: "secret-put", secretRef: LLM_SECRET_REF }),
               key,
             );
+            llm.keyKnown = true;
           } else {
             await runMailCli(
               buildMailCliArgs({ action: "secret-delete", secretRef: LLM_SECRET_REF }),
             );
+            llm.keyKnown = false;
           }
         }
         return json(res, 200, { llm: saved }, origin);

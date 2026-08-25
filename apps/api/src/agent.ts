@@ -51,6 +51,7 @@ function taskFor(skill: AgentSkill): string {
 }
 
 import { assertLlmAllowed, buildOpenAiRequest, isLoopbackLlm } from "./llm-policy.js";
+import { buildAnthropicRequest, parseAnthropicReply, providerFor } from "./llm-anthropic.js";
 import { estimateTokens, recordUsage } from "./usage.js";
 
 export function buildOllamaGenerateBody(opts: { model: string; prompt: string }): {
@@ -74,14 +75,43 @@ export async function completeLocal(opts: {
   model?: string;
   ollamaUrl?: string;
   apiKey?: string;
-  provider?: "ollama" | "openai-compatible";
+  provider?: "ollama" | "openai-compatible" | "anthropic";
   allowCloud?: boolean;
 }): Promise<{ text: string; model: string }> {
   const model = opts.model ?? "mistral";
   const baseUrl = (opts.ollamaUrl ?? "http://127.0.0.1:11434").replace(/\/$/, "");
   assertLlmAllowed({ baseUrl, allowCloud: opts.allowCloud });
+
+  /*
+   * Which wire format to speak.
+   *
+   * Detected from the URL rather than trusted from the stored setting: a
+   * provider field left over from a previous configuration would otherwise
+   * send Anthropic-shaped traffic to OpenAI, or worse, send an OpenAI request
+   * to Claude — which fails in a way that looks like a bad API key.
+   */
+  const wire = opts.provider === "ollama" ? "ollama" : providerFor(baseUrl);
+
+  if (wire === "anthropic") {
+    if (!opts.apiKey) throw new Error("Claude needs an API key in Settings");
+    const req = buildAnthropicRequest({ baseUrl, model, apiKey: opts.apiKey, prompt: opts.prompt });
+    const res = await fetch(req.url, {
+      method: "POST",
+      headers: req.headers,
+      body: JSON.stringify(req.body),
+      // A metered API that hangs is worse than one that fails: cap the wait.
+      signal: AbortSignal.timeout(60_000),
+    });
+    const raw = await res.text();
+    // parseAnthropicReply surfaces the provider's own message, which is far
+    // more useful than "LLM 401" when the cause is usually a bad key.
+    const text = parseAnthropicReply(raw).trim();
+    recordUsage({ promptChars: opts.prompt.length, completion: estimateTokens(text), cap: 80 });
+    return { text, model };
+  }
+
   const useOpenAi =
-    opts.provider === "openai-compatible" || Boolean(opts.apiKey && !isLoopbackLlm(baseUrl));
+    wire === "openai-compatible" || Boolean(opts.apiKey && !isLoopbackLlm(baseUrl));
   if (useOpenAi) {
     if (!opts.apiKey) throw new Error("Cloud / OpenAI-compatible models need an API key in Settings");
     const req = buildOpenAiRequest({ baseUrl, model, apiKey: opts.apiKey, prompt: opts.prompt });
@@ -129,7 +159,7 @@ export async function chatWithMail(opts: {
   model?: string;
   ollamaUrl?: string;
   apiKey?: string;
-  provider?: "ollama" | "openai-compatible";
+  provider?: "ollama" | "openai-compatible" | "anthropic";
   allowCloud?: boolean;
   memory?: string;
 }): Promise<{ text: string; model: string; refused: string[] }> {
@@ -169,7 +199,7 @@ export async function runAgent(opts: {
   model?: string;
   ollamaUrl?: string;
   apiKey?: string;
-  provider?: "ollama" | "openai-compatible";
+  provider?: "ollama" | "openai-compatible" | "anthropic";
   allowCloud?: boolean;
   voice?: string;
   memory?: string;

@@ -95,14 +95,27 @@ export function parseAnthropicReply(raw: string): string {
  * know the formats differ.
  */
 export function providerFor(baseUrl: string): "ollama" | "anthropic" | "openai-compatible" {
-  let host: string;
+  let url: URL;
   try {
-    host = new URL(baseUrl).hostname.toLowerCase();
+    url = new URL(baseUrl);
   } catch {
     return "openai-compatible";
   }
 
-  if (host === "127.0.0.1" || host === "localhost" || host === "::1") return "ollama";
+  const host = url.hostname.toLowerCase();
   if (host.endsWith("anthropic.com")) return "anthropic";
+
+  const loopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
+  if (loopback) {
+    /*
+     * Local does not mean Ollama.
+     *
+     * llama.cpp, LM Studio and vLLM all serve the OpenAI shape on localhost,
+     * and the `/v1` path is how they say so. Assuming Ollama for anything
+     * loopback would send Ollama-shaped requests to those servers.
+     */
+    return url.pathname.replace(/\/$/, "").endsWith("/v1") ? "openai-compatible" : "ollama";
+  }
+
   return "openai-compatible";
 }

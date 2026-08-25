@@ -1,9 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { assertLlmAllowed } from "./llm-policy.js";
+import { providerFor } from "./llm-anthropic.js";
 
 export type LlmPublic = {
-  provider: "ollama" | "openai-compatible";
+  provider: "ollama" | "openai-compatible" | "anthropic";
   baseUrl: string;
   model: string;
   hasKey: boolean;
@@ -22,13 +23,25 @@ const DEFAULTS: LlmFile = {
 };
 
 export class LlmSettings {
+  /**
+   * Set by the settings route once a key has been written to the keyring.
+   *
+   * The durable copy lives in the OS keyring, which this class cannot read
+   * (that needs aether-cli). This flag exists so the UI can say "key set"
+   * without the settings screen having to shell out on every render.
+   */
+  keyKnown = false;
+
   constructor(private filePath: string) {}
 
   private read(): LlmFile {
     try {
       const raw = JSON.parse(readFileSync(this.filePath, "utf8")) as Partial<LlmFile>;
       return {
-        provider: raw.provider === "openai-compatible" ? "openai-compatible" : "ollama",
+        // Derive from the URL, not the stored label: a file written by an
+        // older build has provider "openai-compatible" for an Anthropic URL,
+        // and honouring that would send the wrong protocol forever.
+        provider: providerFor(raw.baseUrl || DEFAULTS.baseUrl),
         baseUrl: raw.baseUrl || DEFAULTS.baseUrl,
         model: raw.model || DEFAULTS.model,
         allowCloud: Boolean(raw.allowCloud),
@@ -42,7 +55,9 @@ export class LlmSettings {
 
   publicView(): LlmPublic {
     const cfg = this.read();
-    return { ...cfg, hasKey: keys.has("llm") };
+    // hasKey is advisory: the durable copy is in the OS keyring, and the
+    // route sets this flag when it stores one.
+    return { ...cfg, hasKey: keys.has("llm") || this.keyKnown };
   }
 
   save(input: {
@@ -53,9 +68,17 @@ export class LlmSettings {
     allowCloud?: boolean;
   }): LlmPublic {
     const current = this.read();
+    const baseUrl = (input.baseUrl ?? current.baseUrl).trim() || DEFAULTS.baseUrl;
     const next: LlmFile = {
-      provider: input.provider === "openai-compatible" ? "openai-compatible" : current.provider,
-      baseUrl: (input.baseUrl ?? current.baseUrl).trim() || DEFAULTS.baseUrl,
+      /*
+       * Derive the wire format from the URL rather than trusting the caller.
+       *
+       * The UI used to sniff for port 11434 and label everything else
+       * "openai-compatible", which sent OpenAI-shaped requests to Claude. That
+       * fails as an opaque error the user reads as "my key is wrong".
+       */
+      provider: providerFor(baseUrl),
+      baseUrl,
       model: (input.model ?? current.model).trim() || DEFAULTS.model,
       allowCloud: input.allowCloud ?? current.allowCloud,
     };

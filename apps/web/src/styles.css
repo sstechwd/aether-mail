@@ -3085,3 +3085,7 @@ label.suggest-what { cursor: pointer; }
 .first-run strong { display: block; margin-bottom: 6px; color: var(--ink); font-size: 13px; }
 .first-run p { margin: 0 0 10px; color: var(--ink-soft); font-size: 12px; line-height: 1.45; }
 .first-run-go { width: 100%; }
+
+/* LLM provider presets */
+.llm-presets { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
+.llm-presets .hint { margin: 0; }

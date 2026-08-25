@@ -353,6 +353,47 @@ export default function Settings(props: { onClose: () => void }) {
           Model
           <input value={model} onChange={(e) => setModel(e.target.value)} />
         </label>
+        {/*
+          Presets. Nobody should have to know that Claude lives at
+          api.anthropic.com or what this month's model id is — getting either
+          wrong fails as an opaque 404 or "bad key".
+        */}
+        <div className="llm-presets">
+          <span className="hint">Quick setup:</span>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              setBaseUrl("http://127.0.0.1:11434");
+              setModel("mistral");
+              setAllowCloud(false);
+            }}
+          >
+            Ollama (local, free)
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              setBaseUrl("https://api.anthropic.com");
+              setModel("claude-sonnet-4-20250514");
+              setAllowCloud(true);
+            }}
+          >
+            Claude
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              setBaseUrl("https://api.openai.com/v1");
+              setModel("gpt-4o-mini");
+              setAllowCloud(true);
+            }}
+          >
+            OpenAI
+          </button>
+        </div>
         <label>
           Base URL
           <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
@@ -371,7 +412,9 @@ export default function Settings(props: { onClose: () => void }) {
             api<{ llm: Llm }>("/api/settings/llm", {
               method: "POST",
               body: JSON.stringify({
-                provider: baseUrl.includes("11434") ? "ollama" : "openai-compatible",
+                // Let the server decide the wire format from the URL. Port
+                // sniffing got Claude wrong, and a user has no reason to know
+                // that Anthropic and OpenAI speak different protocols.
                 baseUrl,
                 model,
                 apiKey: apiKey || undefined,
