@@ -75,6 +75,7 @@ export default function Settings(props: { onClose: () => void }) {
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
+  const [oauthPrompt, setOauthPrompt] = useState<{ url: string; userCode: string } | null>(null);
   const [autoInspect, setAutoInspect] = useState(true);
   const [alwaysShow, setAlwaysShow] = useState(false);
 
@@ -444,7 +445,7 @@ export default function Settings(props: { onClose: () => void }) {
                     body: JSON.stringify({ preset: pickedLlm.id }),
                   })
                     .then(async (d) => {
-                      if (d.url) window.open(d.url, "_blank", "noopener,noreferrer");
+                      setOauthPrompt({ url: d.url, userCode: d.userCode });
                       setNote(`Approve SuperGrok in your browser${d.userCode ? ` (code ${d.userCode})` : ""}.`);
                       const wait = Math.max(2000, d.pollMs ?? 4000);
                       for (let i = 0; i < 90; i++) {
@@ -470,6 +471,13 @@ export default function Settings(props: { onClose: () => void }) {
               >
                 {oauthBusy ? "Waiting for SuperGrok…" : "Sign in with SuperGrok"}
               </button>
+            ) : null}
+            {oauthPrompt ? (
+              <p className="cloud-warn">
+                Finish sign-in in your browser. If a tab did not open, go to{" "}
+                <strong>{oauthPrompt.url}</strong> and enter{" "}
+                <strong>{oauthPrompt.userCode}</strong>.
+              </p>
             ) : null}
             <button
               type="button"

@@ -6,6 +6,7 @@ import {
   parseDeviceCodeStart,
   unpackLlmSecret,
   xaiTokenEndpointOk,
+  oauthBrowserUrlOk,
 } from "./llm-oauth.js";
 
 /**
@@ -81,6 +82,14 @@ describe("xAI token endpoint lock", () => {
     expect(xaiTokenEndpointOk("https://auth.x.ai/oauth2/token")).toBe(true);
     expect(xaiTokenEndpointOk("https://evil.example/oauth2/token")).toBe(false);
     expect(xaiTokenEndpointOk("https://auth.x.ai.evil.example/oauth2/token")).toBe(false);
+  });
+
+  it("only opens the system browser at xAI's own sign-in hosts", () => {
+    expect(oauthBrowserUrlOk("https://accounts.x.ai/oauth2/device?user_code=ABCD")).toBe(true);
+    expect(oauthBrowserUrlOk("https://auth.x.ai/activate?user_code=ABCD")).toBe(true);
+    expect(oauthBrowserUrlOk("https://evil.example/?next=https://accounts.x.ai")).toBe(false);
+    expect(oauthBrowserUrlOk("https://accounts.x.ai.evil.example/oauth2/device")).toBe(false);
+    expect(oauthBrowserUrlOk("http://accounts.x.ai/oauth2/device")).toBe(false);
   });
 
   it("packs oauth tokens as json and still reads a leftover raw key", () => {

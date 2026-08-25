@@ -54,6 +54,19 @@ export function xaiTokenEndpointOk(url: string): boolean {
   }
 }
 
+/** URLs we will hand to the OS browser. Tighter than the token-endpoint lock. */
+export function oauthBrowserUrlOk(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") return false;
+    if (u.username || u.password) return false;
+    const host = u.hostname.toLowerCase();
+    return host === "accounts.x.ai" || host === "auth.x.ai";
+  } catch {
+    return false;
+  }
+}
+
 export type DeviceStart = {
   deviceCode: string;
   userCode: string;

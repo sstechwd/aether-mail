@@ -1,6 +1,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { execFile } from "node:child_process";
 import { appRoot } from "./approot.js";
 import { chooseDataDir } from "./datadir.js";
 import { migrateDataDir } from "./datamigrate.js";
@@ -24,6 +25,7 @@ import {
   XAI_TOKEN_URL,
   xaiRefreshForm,
   xaiTokenEndpointOk,
+  oauthBrowserUrlOk,
 } from "./llm-oauth.js";
 import { ChatThread } from "./chat.js";
 import { buildMailCliArgs, runMailCli } from "./mailio.js";
@@ -171,6 +173,18 @@ async function postXaiForm(url: string, fields: Record<string, string>): Promise
 async function putLlmSecret(raw: string): Promise<void> {
   await runMailCli(buildMailCliArgs({ action: "secret-put", secretRef: LLM_SECRET_REF }), raw);
   llm.keyKnown = true;
+}
+
+/**
+ * Open SuperGrok in the real OS browser.
+ *
+ * `window.open` after an async fetch is silently blocked in the Tauri
+ * webview, which is why Sign in looked like it did nothing. The API
+ * opens Firefox (the user's default) itself. Only xAI hosts.
+ */
+function openSystemBrowser(url: string): void {
+  if (!oauthBrowserUrlOk(url)) return;
+  execFile("cmd.exe", ["/c", "start", "", url], { windowsHide: true }, () => undefined);
 }
 
 /**
@@ -2185,6 +2199,7 @@ const server = http.createServer(async (req, res) => {
         }
         const device = parseDeviceCodeStart(started.json);
         llmOauthPending = { deviceCode: device.deviceCode, expires: Date.now() + device.expiresIn * 1000 };
+        openSystemBrowser(device.url);
         return json(
           res,
           200,
