@@ -145,7 +145,12 @@ describe("PROPOSAL_SCHEMA", () => {
   });
 
   it("does not advertise sending or deleting as options", () => {
-    expect(PROPOSAL_SCHEMA.toLowerCase()).not.toContain("send_email");
-    expect(PROPOSAL_SCHEMA.toLowerCase()).not.toContain("delete");
+    const schema = PROPOSAL_SCHEMA.toLowerCase();
+    expect(schema).not.toContain("send_email");
+    // Check for a delete ACTION, not the bare word: the schema legitimately
+    // says muting archives replies "never deleted", which is a reassurance
+    // rather than an offer. Forbidding the substring would forbid saying so.
+    expect(schema).not.toMatch(/"action"\s*:\s*"[^"]*delete/);
+    expect(schema).not.toContain("delete_message");
   });
 });

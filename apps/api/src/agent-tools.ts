@@ -29,6 +29,12 @@ To file mail automatically:
 To save a reusable reply:
 {"action":"create_template","name":"<short name>","body":"<the reply text>","why":"<one short sentence>"}
 
+To silence a noisy thread (its replies arrive read and archived, never deleted):
+{"action":"mute_thread","subject":"<the thread subject>","why":"<one short sentence>"}
+
+To make this message come back later:
+{"action":"snooze","preset":"later"|"tomorrow"|"weekend"|"next-week","why":"<one short sentence>"}
+
 No other actions exist. Do not explain outside the JSON.`;
 
 export type RuleProposal = {
@@ -40,16 +46,24 @@ export type RuleProposal = {
 
 export type TemplateProposal = { name: string; body: string };
 
+export type MuteProposal = { subject: string };
+
+/** Only the presets the snooze engine implements. No free-form dates. */
+export type SnoozeProposal = { preset: "later" | "tomorrow" | "weekend" | "next-week" };
+
 export type Proposal = {
-  action: "create_rule" | "create_template";
+  action: "create_rule" | "create_template" | "mute_thread" | "snooze";
   rule?: RuleProposal;
   template?: TemplateProposal;
+  mute?: MuteProposal;
+  snooze?: SnoozeProposal;
   /** The model's stated reason, shown to the user so they can judge it. */
   why?: string;
 };
 
 const FIELDS = ["from", "to", "subject"] as const;
 const VERBS = ["move", "star", "read"] as const;
+const PRESETS = ["later", "tomorrow", "weekend", "next-week"] as const;
 
 function clean(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -118,6 +132,27 @@ export function parseProposal(raw: string): Proposal | null {
     return { action: "create_template", template: { name, body }, why: why || undefined };
   }
 
+  if (action === "mute_thread") {
+    const subject = clean(obj.subject, 300);
+    // An empty subject would mute every thread in the mailbox.
+    if (!subject) return null;
+    /*
+     * Only the subject is carried through. Any `then`/`folder` the model
+     * invents is dropped on the floor rather than rejected — muting has
+     * exactly one behaviour (arrive read and archived, never deleted) and it
+     * is not the model's to vary.
+     */
+    return { action: "mute_thread", mute: { subject }, why: why || undefined };
+  }
+
+  if (action === "snooze") {
+    const preset = clean(obj.preset, 20) as SnoozeProposal["preset"];
+    // Closed list: these are what the snooze engine implements, and a
+    // free-form date would be a parsing surface for no benefit.
+    if (!PRESETS.includes(preset)) return null;
+    return { action: "snooze", snooze: { preset }, why: why || undefined };
+  }
+
   return null;
 }
 
@@ -141,6 +176,22 @@ export function describeProposal(p: Proposal): string {
   }
   if (p.action === "create_template" && p.template) {
     return `Save a reply template called “${p.template.name}”.`;
+  }
+  if (p.action === "mute_thread" && p.mute) {
+    // Says what happens to the mail, and says what does NOT — "will it delete
+    // my mail?" is the first thing anyone asks about muting.
+    return `Mute “${p.mute.subject}”. New replies arrive already read and archived, never deleted.`;
+  }
+  if (p.action === "snooze" && p.snooze) {
+    const when =
+      p.snooze.preset === "later"
+        ? "later today"
+        : p.snooze.preset === "tomorrow"
+          ? "tomorrow morning"
+          : p.snooze.preset === "weekend"
+            ? "this weekend"
+            : "next week";
+    return `Hide this message and bring it back ${when}.`;
   }
   return "Unknown proposal.";
 }

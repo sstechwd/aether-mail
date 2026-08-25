@@ -32,7 +32,7 @@ import { canonicalFolder, pickSyncFolders, sortFolders } from "./folders.js";
 import { isCalendarPart, parseIcs, toIcsFile } from "./ics.js";
 import { SignatureBook, applySignature } from "./signatures.js";
 import { harvestContacts, suggestContacts } from "./contacts.js";
-import { groupIntoThreads } from "./threading.js";
+import { groupIntoThreads, normalizeSubject } from "./threading.js";
 import { parseJsonBody, asString, asStringArray } from "./reqbody.js";
 import { sanitizeComposedHtml, htmlToPlainText, hasFormatting } from "./compose-html.js";
 import { CalendarStore } from "./calendar.js";
@@ -1363,6 +1363,60 @@ const server = http.createServer(async (req, res) => {
         });
         audit.append({ actor: "user", action: "agent.template.approved", detail: tpl.name });
         return json(res, 201, { created: "template", template: tpl }, origin);
+      }
+
+      if (proposal.action === "mute_thread" && proposal.mute) {
+        /*
+         * Mute, then file what is already here.
+         *
+         * Muting only affects mail that has not arrived yet, so approving a
+         * mute and watching eight copies stay in the inbox reads as broken.
+         * Same two-step reasoning as accepting a folder suggestion.
+         */
+        muteBook.mute(proposal.mute.subject);
+        let filed = 0;
+        for (const msg of store.listMessages(activeAccountId, "INBOX", "newest")) {
+          if (normalizeSubject(msg.subject ?? "") !== normalizeSubject(proposal.mute.subject)) {
+            continue;
+          }
+          store.markRead(msg.id);
+          store.move(msg.id, "Archive");
+          filed += 1;
+        }
+        audit.append({
+          actor: "user",
+          action: "agent.mute.approved",
+          detail: `${proposal.mute.subject} (${filed} filed)`,
+        });
+        return json(
+          res,
+          201,
+          { created: "mute", subject: proposal.mute.subject, filed, muted: muteBook.list() },
+          origin,
+        );
+      }
+
+      if (proposal.action === "snooze" && proposal.snooze) {
+        // Snooze acts on the message the proposal was made about, so the id
+        // comes from the request rather than from the model.
+        const targetId = asString(body.messageId);
+        const msg = targetId ? store.getMessage(targetId) : null;
+        if (!msg) return json(res, 400, { error: "no_message" }, origin);
+
+        const wakeAt = snoozeUntil(proposal.snooze.preset as SnoozePreset).getTime();
+        snoozeBook.add(msg.id, msg.folder ?? "INBOX", wakeAt);
+        store.move(msg.id, "Snoozed");
+        audit.append({
+          actor: "user",
+          action: "agent.snooze.approved",
+          detail: `${proposal.snooze.preset} -> ${new Date(wakeAt).toISOString()}`,
+        });
+        return json(
+          res,
+          201,
+          { created: "snooze", wakeAt, preset: proposal.snooze.preset },
+          origin,
+        );
       }
 
       return json(res, 400, { error: "bad_proposal" }, origin);
