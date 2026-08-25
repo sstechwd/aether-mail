@@ -2634,12 +2634,12 @@ export default function App() {
               Ask about your mail without opening a message. Runs on your own key or a local model —
               nothing leaves this machine unless you configured a hosted one.
             </p>
-            <AgentChat messageId={null} />
+            <AgentChat messageId={null} onStoreChange={() => void refreshFolders()} />
           </div>
         ) : !selected ? (
           <>
             <p className="empty tall">Select a message. Chat still works on whatever you open next.</p>
-            <AgentChat messageId={null} />
+            <AgentChat messageId={null} onStoreChange={() => void refreshFolders()} />
           </>
         ) : (
           <>
@@ -2980,7 +2980,7 @@ export default function App() {
                 {sendNote ? <span className="note">{sendNote}</span> : null}
               </div>
             </section>
-            <AgentChat messageId={selected.id} />
+            <AgentChat messageId={selected.id} onStoreChange={() => void refreshFolders()} />
           </>
         )}
         {error ? <p className="error">{error}</p> : null}

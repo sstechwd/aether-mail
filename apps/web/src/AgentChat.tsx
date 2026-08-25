@@ -39,7 +39,7 @@ function labelFor(llm: Llm | null): string {
   return llm.model;
 }
 
-export default function AgentChat(props: { messageId: string | null }) {
+export default function AgentChat(props: { messageId: string | null; onStoreChange?: () => void }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -120,6 +120,7 @@ export default function AgentChat(props: { messageId: string | null }) {
         body: JSON.stringify({ text: q, messageId: props.messageId }),
       });
       setTurns(data.turns);
+      props.onStoreChange?.();
       api<{ lastCompletion: number; cap: number; promptTokens: number }>("/api/usage")
         .then(setUsage)
         .catch(() => undefined);

@@ -77,6 +77,7 @@ import { usageSnapshot } from "./usage.js";
 import { SibylMemory } from "./sibyl.js";
 import { resolveAccountSwitch } from "./account-switch.js";
 import { applyWorkflows, compileWorkflows, WorkflowBook } from "./workflows.js";
+import { parseUserCommand } from "./user-command.js";
 
 const PORT = Number(process.env.AETHER_PORT ?? 8787);
 const here = appRoot();
@@ -2327,6 +2328,64 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { turns: chat.list(), result: { text: summary, model: "inspect", refused: [] } }, origin);
       }
       try {
+        const cmd = parseUserCommand(text);
+        if (cmd) {
+          if (cmd.action === "need_folder_name") {
+            const summary = "What should the folder be called?";
+            chat.add("assistant", summary);
+            return json(res, 200, { turns: chat.list(), result: { text: summary, model: "command", refused: [] } }, origin);
+          }
+          if (cmd.action === "refuse_filesystem") {
+            const summary =
+              "I only create folders inside this mailbox, not on your desktop or disk. Say “make a folder called Receipts”.";
+            chat.add("assistant", summary);
+            return json(res, 200, { turns: chat.list(), result: { text: summary, model: "command", refused: [] } }, origin);
+          }
+          if (cmd.action === "create_folder") {
+            store.ensureFolder(activeAccountId, cmd.name);
+            store.saveNow();
+            audit.append({ actor: "user", action: "folder.create", detail: cmd.name });
+            const summary = `Created the mail folder “${cmd.name}”. It is in the folder list now.`;
+            chat.add("assistant", summary);
+            return json(res, 200, { turns: chat.list(), result: { text: summary, model: "command", refused: [] } }, origin);
+          }
+          if (cmd.action === "create_rule") {
+            if (cmd.then === "move" && cmd.folder) store.ensureFolder(activeAccountId, cmd.folder);
+            const rule = ruleBook.add({
+              field: cmd.field,
+              contains: cmd.contains,
+              action: cmd.then,
+              folder: cmd.folder,
+              enabled: true,
+            });
+            let filed = 0;
+            for (const msg of store.listMessages(activeAccountId, "INBOX", "newest")) {
+              const hit = ruleBook.apply({
+                from: msg.from ?? "",
+                to: msg.to ?? "",
+                subject: msg.subject ?? "",
+                folder: msg.folder ?? "INBOX",
+              });
+              if (!hit || hit.id !== rule.id) continue;
+              if (hit.action === "move" && hit.folder) store.move(msg.id, hit.folder);
+              else if (hit.action === "star") store.setStarred(msg.id, true);
+              else if (hit.action === "read") store.markRead(msg.id);
+              filed += 1;
+            }
+            store.saveNow();
+            audit.append({
+              actor: "user",
+              action: "rule.add",
+              detail: `${cmd.field} ~ ${cmd.contains}${cmd.folder ? " → " + cmd.folder : ""} (${filed} filed)`,
+            });
+            const summary =
+              cmd.then === "move" && cmd.folder
+                ? `Created folder “${cmd.folder}” if it was missing, and a rule: mail whose ${cmd.field} contains “${cmd.contains}” goes there. Filed ${filed} existing message(s).`
+                : `Created a rule on ${cmd.field} containing “${cmd.contains}”. Applied to ${filed} message(s).`;
+            chat.add("assistant", summary);
+            return json(res, 200, { turns: chat.list(), result: { text: summary, model: "command", refused: [] } }, origin);
+          }
+        }
         const taught = compileWorkflows(text);
         if (taught.length) {
           for (const rule of taught) {
