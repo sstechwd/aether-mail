@@ -2633,12 +2633,26 @@ textarea:focus-visible {
 :root[data-theme="paper"] ::-webkit-scrollbar-thumb { background: #d0d0c9; }
 
 /* ===== Drag a message onto a folder ================================== */
-.row[draggable="true"] {
+.row[draggable="true"],
+.row {
   cursor: grab;
-  -webkit-user-drag: element;
-  user-select: none;
+}
+.row {
+  touch-action: none;
 }
 .row.dragging { opacity: 0.45; cursor: grabbing; }
+
+.drag-ghost {
+  position: fixed;
+  z-index: 80;
+  pointer-events: none;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--accent);
+  color: var(--mark-ink, #1a120c);
+  border-radius: 4px;
+  box-shadow: var(--elev-1);
+}
 
 /* The folder you are hovering while dragging. */
 .folder.drop {

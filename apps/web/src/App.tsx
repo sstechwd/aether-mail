@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { apiUrl } from "./apibase.js";
 import {
   monthGrid,
@@ -20,6 +20,7 @@ import {
   type PaneKey,
 } from "./panes.js";
 import { toggleSelection, rangeSelection, UndoStack } from "./selection.js";
+import { dragExceeded, folderFromPoint } from "./drag.js";
 import Settings from "./Settings";
 import AgentChat from "./AgentChat";
 import Templates from "./Templates";
@@ -323,6 +324,9 @@ export default function App() {
   /** One-deep undo for the last destructive action. */
   const undoRef = useRef(new UndoStack());
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
+  const dragRef = useRef<{ id: string; x: number; y: number; armed: boolean } | null>(null);
+  const skipClickRef = useRef(false);
+  const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
   /** Filing rules, and the new-rule form on the Rules page. */
   const [rules, setRules] = useState<Rule[]>([]);
   const [ruleField, setRuleField] = useState<"from" | "to" | "subject">("from");
@@ -1373,6 +1377,71 @@ export default function App() {
     }
   }
 
+  function beginMailDrag(e: ReactPointerEvent, id: string) {
+    if (e.button !== 0) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+    dragRef.current = { id, x: e.clientX, y: e.clientY, armed: false };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function moveMailDrag(e: ReactPointerEvent) {
+    const d = dragRef.current;
+    if (!d) return;
+    if (!d.armed) {
+      if (!dragExceeded(d.x, d.y, e.clientX, e.clientY)) return;
+      d.armed = true;
+      setDragMsg(d.id);
+    }
+    setDragPos({ x: e.clientX, y: e.clientY });
+    const hit = folderFromPoint(document.elementFromPoint(e.clientX, e.clientY));
+    setDropFolder(hit && hit !== folder ? hit : null);
+  }
+
+  function endMailDrag(e: ReactPointerEvent) {
+    const d = dragRef.current;
+    dragRef.current = null;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+    const hit = folderFromPoint(document.elementFromPoint(e.clientX, e.clientY));
+    const armed = Boolean(d?.armed);
+    const id = d?.id;
+    setDragMsg(null);
+    setDropFolder(null);
+    if (!armed || !id || !hit || hit === folder) return;
+    skipClickRef.current = true;
+    const ids = picked.includes(id) && picked.length > 0 ? picked : [id];
+    void bulkAction(ids, "move", hit);
+  }
+
+  /** Outlook-style: this sender always goes to a folder. */
+  async function fileThisSender(): Promise<void> {
+    const current = selectedRef.current;
+    if (!current) return;
+    const angled = /<([^>]+)>/.exec(current.from);
+    const contains = (angled ? angled[1] : current.from).trim();
+    if (!contains) return;
+    const guess = contains.includes("@") ? contains.split("@")[0] : contains;
+    const dest = window.prompt(`Always file mail from ${contains} into which folder?`, guess);
+    if (!dest?.trim()) return;
+    try {
+      await api("/api/folders", { method: "POST", body: JSON.stringify({ name: dest.trim() }) });
+      await api("/api/rules", {
+        method: "POST",
+        body: JSON.stringify({ field: "from", contains, action: "move", folder: dest.trim() }),
+      });
+      setSendNote(`Rule: ${contains} → ${dest.trim()}`);
+      await refreshRules();
+      await runRules();
+      await refreshFolders();
+      await refreshMessages(folder);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   /** Trust this sender's images from now on. */
   async function trustSenderImages(): Promise<void> {
     if (!selected) return;
@@ -1665,10 +1734,13 @@ export default function App() {
             {folders.filter((f) => f.name !== "Starred").map((f) => (
               <option key={f.name} value={f.name}>
                 {f.name}
-              </option>
-            ))}
-          </select>
-          <button disabled={!selected} onClick={() => replySelected().catch((e: Error) => setError(e.message))}>
+                  </option>
+                ))}
+                </select>
+                <button disabled={!selected} onClick={() => fileThisSender().catch((e: Error) => setError(e.message))}>
+                File this sender…
+                </button>
+                <button disabled={!selected} onClick={() => replySelected().catch((e: Error) => setError(e.message))}>
             Reply
           </button>
           <button disabled={!selected} onClick={() => forwardSelected().catch((e: Error) => setError(e.message))}>
@@ -1834,31 +1906,14 @@ export default function App() {
         {folders.map((f) => (
           <button
             key={f.name}
+            type="button"
+            data-drop-folder={f.name}
             className={`folder${f.name === folder ? " on" : ""}${
               dropFolder === f.name ? " drop" : ""
             }`}
             onContextMenu={(e) => {
-              // Right-click to remove a folder you made. The server refuses
-              // standard folders and anything still holding mail, so this can
-              // only ever delete an empty custom folder.
               e.preventDefault();
               void removeFolder(f.name);
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-              setDropFolder(f.name);
-            }}
-            onDragLeave={() => setDropFolder((d) => (d === f.name ? null : d))}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const id = e.dataTransfer.getData("text/plain") || dragMsg;
-              setDropFolder(null);
-              setDragMsg(null);
-              if (!id) return;
-              const ids = picked.includes(id) && picked.length > 0 ? picked : [id];
-              void bulkAction(ids, "move", f.name);
             }}
             onClick={() => {
               setFolder(f.name);
@@ -2401,23 +2456,15 @@ export default function App() {
             className={`row${m.id === selectedId ? " on" : ""}${m.unread ? " unread" : ""}${
               dragMsg === m.id ? " dragging" : ""
             }${picked.includes(m.id) ? " picked" : ""}`}
-            draggable
             onContextMenu={(e) => {
               e.preventDefault();
-              // Right-clicking outside the selection targets just that row.
               if (!picked.includes(m.id)) setPicked([m.id]);
               setMenu({ x: e.clientX, y: e.clientY, id: m.id });
             }}
-            onDragStart={(e) => {
-              setDragMsg(m.id);
-              e.dataTransfer.effectAllowed = "move";
-              e.dataTransfer.setData("text/plain", m.id);
-              e.dataTransfer.setData("application/x-aether-message", m.id);
-            }}
-            onDragEnd={() => {
-              setDragMsg(null);
-              setDropFolder(null);
-            }}
+            onPointerDown={(e) => beginMailDrag(e, m.id)}
+            onPointerMove={moveMailDrag}
+            onPointerUp={endMailDrag}
+            onPointerCancel={endMailDrag}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
@@ -2427,6 +2474,10 @@ export default function App() {
               }
             }}
             onClick={(e) => {
+              if (skipClickRef.current) {
+                skipClickRef.current = false;
+                return;
+              }
               // Ctrl/Cmd toggles one row; Shift extends from the anchor.
               if (e.ctrlKey || e.metaKey) {
                 setPicked((p) => toggleSelection(p, m.id));
@@ -3273,6 +3324,12 @@ export default function App() {
             🗑 Delete
           </button>
           <button onClick={() => setPicked([])}>Clear</button>
+        </div>
+      ) : null}
+
+      {dragMsg ? (
+        <div className="drag-ghost" style={{ left: dragPos.x + 12, top: dragPos.y + 12 }} aria-hidden>
+          Drop on a folder
         </div>
       ) : null}
 
