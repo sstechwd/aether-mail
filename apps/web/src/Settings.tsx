@@ -19,6 +19,7 @@ type LlmPreset = {
   model: string;
   allowCloud: boolean;
   needsKey: boolean;
+  canOAuth?: boolean;
   keyHost: string;
   keyUrl: string;
   billingNote: string;
@@ -73,6 +74,7 @@ export default function Settings(props: { onClose: () => void }) {
   const [note, setNote] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState(false);
   const [autoInspect, setAutoInspect] = useState(true);
   const [alwaysShow, setAlwaysShow] = useState(false);
 
@@ -368,8 +370,9 @@ export default function Settings(props: { onClose: () => void }) {
       <section>
         <h2>Agent model</h2>
         <p className="hint">
-          Pick a provider, paste an API key, done. Keys go in Windows Credential Manager, never
-          into llm.json. A ChatGPT / Claude / SuperGrok subscription is not an API key.
+          Pick a provider. Grok can sign in with SuperGrok. Claude and ChatGPT
+          subscriptions cannot — those companies block third-party mail apps, so
+          those two still need an API key. Keys go in Windows Credential Manager.
         </p>
         <div className="llm-cards" role="list">
           {presets.map((p) => {
@@ -428,6 +431,46 @@ export default function Settings(props: { onClose: () => void }) {
                 uploaded.
               </p>
             )}
+            {pickedLlm.canOAuth ? (
+              <button
+                type="button"
+                className="oauth-btn"
+                disabled={oauthBusy}
+                onClick={() => {
+                  setNote(null);
+                  setOauthBusy(true);
+                  api<{ url: string; userCode: string; pollMs?: number }>("/api/settings/llm/oauth/start", {
+                    method: "POST",
+                    body: JSON.stringify({ preset: pickedLlm.id }),
+                  })
+                    .then(async (d) => {
+                      if (d.url) window.open(d.url, "_blank", "noopener,noreferrer");
+                      setNote(`Approve SuperGrok in your browser${d.userCode ? ` (code ${d.userCode})` : ""}.`);
+                      const wait = Math.max(2000, d.pollMs ?? 4000);
+                      for (let i = 0; i < 90; i++) {
+                        await new Promise((r) => setTimeout(r, wait));
+                        const polled = await api<{ status: string; llm?: Llm }>("/api/settings/llm/oauth/poll", {
+                          method: "POST",
+                          body: "{}",
+                        });
+                        if (polled.status === "ready" && polled.llm) {
+                          setLlm(polled.llm);
+                          setModel(polled.llm.model);
+                          setBaseUrl(polled.llm.baseUrl);
+                          setAllowCloud(Boolean(polled.llm.allowCloud));
+                          setNote("Grok is signed in with your SuperGrok subscription.");
+                          return;
+                        }
+                      }
+                      setNote("SuperGrok sign-in timed out. Try again.");
+                    })
+                    .catch((e: Error) => setNote(e.message))
+                    .finally(() => setOauthBusy(false));
+                }}
+              >
+                {oauthBusy ? "Waiting for SuperGrok…" : "Sign in with SuperGrok"}
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={

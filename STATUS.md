@@ -15,9 +15,11 @@ Rebuild after code changes with `scripts\build-app.bat` (it closes the running a
 
 ## Agent model — Claude / OpenAI / Grok
 
-Settings → **Agent model**. Four cards: Ollama, Claude, OpenAI, Grok. Click one, paste an API key from the provider console, click Use. No URLs to type.
+Settings → **Agent model**. Four cards: Ollama, Claude, OpenAI, Grok.
 
-A ChatGPT / claude.ai / SuperGrok **subscription will not work**. You need an API key (`sk-ant-…`, `sk-…`, `xai-…`). Mail use is cents a month, not a second $20. The key stays in Windows Credential Manager.
+**Grok:** click **Sign in with SuperGrok** (browser login, uses your SuperGrok / X Premium+ allowance) or paste an API key.
+
+**Claude and OpenAI:** those companies do not let a third-party mail app use a chat subscription. Paste an API key from their developer console. Mail use is cents a month.
 
 ## The one thing that needs you
 

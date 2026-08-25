@@ -19,6 +19,7 @@ export type LlmPreset = {
   model: string;
   allowCloud: boolean;
   needsKey: boolean;
+  canOAuth: boolean;
   /** Host the user visits to mint a key. Shown next to the paste box. */
   keyHost: string;
   keyUrl: string;
@@ -35,6 +36,7 @@ export const LLM_PRESETS: readonly LlmPreset[] = [
     model: "mistral",
     allowCloud: false,
     needsKey: false,
+    canOAuth: false,
     keyHost: "",
     keyUrl: "",
     billingNote: "",
@@ -49,6 +51,7 @@ export const LLM_PRESETS: readonly LlmPreset[] = [
     model: "claude-sonnet-4-6",
     allowCloud: true,
     needsKey: true,
+    canOAuth: false,
     keyHost: "console.anthropic.com",
     keyUrl: "https://console.anthropic.com/settings/keys",
     billingNote:
@@ -62,6 +65,7 @@ export const LLM_PRESETS: readonly LlmPreset[] = [
     model: "gpt-4o-mini",
     allowCloud: true,
     needsKey: true,
+    canOAuth: false,
     keyHost: "platform.openai.com",
     keyUrl: "https://platform.openai.com/api-keys",
     billingNote:
@@ -75,10 +79,11 @@ export const LLM_PRESETS: readonly LlmPreset[] = [
     model: "grok-4.6",
     allowCloud: true,
     needsKey: true,
+    canOAuth: true,
     keyHost: "console.x.ai",
     keyUrl: "https://console.x.ai/",
     billingNote:
-      "SuperGrok will not work. You need an API key from console.x.ai — billed per token, not as a second subscription.",
+      "Sign in with SuperGrok / X Premium+ (same idea as Hermes), or paste an API key from console.x.ai.",
   },
 ];
 

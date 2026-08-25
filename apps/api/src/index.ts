@@ -12,6 +12,19 @@ import { AccountBook, peekSecret } from "./accounts.js";
 import { corsHeaders, MAX_BODY_BYTES, publicAccount, rejectCrossSite } from "./security.js";
 import { LlmSettings } from "./llm.js";
 import { applyLlmPreset, matchPreset, publicLlmPresets } from "./llm-presets.js";
+import {
+  interpretDevicePoll,
+  oauthAllowedFor,
+  packLlmSecret,
+  parseDeviceCodeStart,
+  unpackLlmSecret,
+  xaiDevicePollForm,
+  xaiDeviceStartForm,
+  XAI_DEVICE_CODE_URL,
+  XAI_TOKEN_URL,
+  xaiRefreshForm,
+  xaiTokenEndpointOk,
+} from "./llm-oauth.js";
 import { ChatThread } from "./chat.js";
 import { buildMailCliArgs, runMailCli } from "./mailio.js";
 import { prepareSend } from "./send-prepare.js";
@@ -129,27 +142,65 @@ store.ensureFolder(FIXTURE_ACCOUNT.id, "Drafts");
 const accounts = new AccountBook(dataPath("accounts.json"));
 const llm = new LlmSettings(dataPath("llm.json"));
 
-/** Keyring entry holding the cloud LLM API key. */
+/** Keyring entry holding the cloud LLM API key or SuperGrok OAuth blob. */
 const LLM_SECRET_REF = "keyring:aether-secrets/llm";
 
+type LlmOauthPending = { deviceCode: string; expires: number };
+let llmOauthPending: LlmOauthPending | null = null;
+
+async function postXaiForm(url: string, fields: Record<string, string>): Promise<{ status: number; json: unknown }> {
+  if (!xaiTokenEndpointOk(url)) {
+    throw new Error("refusing to send an LLM token to a host that is not xAI");
+  }
+  const body = new URLSearchParams(fields).toString();
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body,
+    signal: AbortSignal.timeout(20_000),
+  });
+  let json: unknown = {};
+  try {
+    json = JSON.parse(await res.text());
+  } catch {
+    json = {};
+  }
+  return { status: res.status, json };
+}
+
+async function putLlmSecret(raw: string): Promise<void> {
+  await runMailCli(buildMailCliArgs({ action: "secret-put", secretRef: LLM_SECRET_REF }), raw);
+  llm.keyKnown = true;
+}
+
 /**
- * The configured LLM, with its API key read from the OS keyring.
- *
- * The key used to sit in a module-level Map, so it was lost on restart and a
- * paid provider silently stopped working. resolve() still returns whatever is
- * in memory from this session; the keyring is the durable copy.
+ * The configured LLM, with its API key or SuperGrok access token from the keyring.
  */
 async function resolveLlm(): Promise<ReturnType<typeof llm.resolve>> {
   const cfg = llm.resolve();
   if (cfg.apiKey) return cfg;
   try {
-    const got = await runMailCli(
-      buildMailCliArgs({ action: "secret-get", secretRef: LLM_SECRET_REF }),
+    const got = await runMailCli(buildMailCliArgs({ action: "secret-get", secretRef: LLM_SECRET_REF }));
+    const packed = got.ok ? (got.secret ?? "").trim() : "";
+    if (!packed) return cfg;
+    const secret = unpackLlmSecret(packed);
+    if (!secret) return cfg;
+    if (secret.kind === "apikey") return { ...cfg, apiKey: secret.key };
+    if (secret.expiresAt > Date.now() + 120_000) return { ...cfg, apiKey: secret.access };
+    const refreshed = await postXaiForm(XAI_TOKEN_URL, xaiRefreshForm(secret.refresh));
+    const body = (refreshed.json ?? {}) as { access_token?: string; refresh_token?: string; expires_in?: number };
+    if (refreshed.status !== 200 || !body.access_token) return { ...cfg, apiKey: secret.access };
+    const nextRefresh = body.refresh_token || secret.refresh;
+    await putLlmSecret(
+      packLlmSecret({
+        kind: "oauth",
+        access: body.access_token,
+        refresh: nextRefresh,
+        expiresAt: Date.now() + (Number(body.expires_in) || 3600) * 1000,
+      }),
     );
-    const key = got.ok ? (got.secret ?? "").trim() : "";
-    return key ? { ...cfg, apiKey: key } : cfg;
+    return { ...cfg, apiKey: body.access_token };
   } catch {
-    // No key stored, or the CLI is unavailable: a local model needs neither.
     return cfg;
   }
 }
@@ -2119,6 +2170,59 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { llm: saved }, origin);
       } catch (e) {
         return json(res, 400, { error: "bad_llm", message: e instanceof Error ? e.message : String(e) }, origin);
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/settings/llm/oauth/start") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw || "{}") as { preset?: string };
+      const decision = oauthAllowedFor(body.preset ?? "");
+      if (!decision.ok) return json(res, 400, { error: "oauth_unavailable", message: decision.reason }, origin);
+      try {
+        const started = await postXaiForm(XAI_DEVICE_CODE_URL, xaiDeviceStartForm());
+        if (started.status !== 200) {
+          return json(res, 400, { error: "oauth_start", message: "xAI would not start SuperGrok sign-in." }, origin);
+        }
+        const device = parseDeviceCodeStart(started.json);
+        llmOauthPending = { deviceCode: device.deviceCode, expires: Date.now() + device.expiresIn * 1000 };
+        return json(
+          res,
+          200,
+          { url: device.url, userCode: device.userCode, expiresIn: device.expiresIn, pollMs: device.intervalMs },
+          origin,
+        );
+      } catch (e) {
+        return json(res, 400, { error: "oauth_start", message: e instanceof Error ? e.message : String(e) }, origin);
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/settings/llm/oauth/poll") {
+      if (!llmOauthPending || Date.now() > llmOauthPending.expires) {
+        llmOauthPending = null;
+        return json(res, 410, { error: "oauth_expired", message: "SuperGrok sign-in timed out. Try again." }, origin);
+      }
+      try {
+        const polled = await postXaiForm(XAI_TOKEN_URL, xaiDevicePollForm(llmOauthPending.deviceCode));
+        const result = interpretDevicePoll(polled.status, polled.json);
+        if (result.status === "pending") return json(res, 202, { status: "pending" }, origin);
+        llmOauthPending = null;
+        if (result.status !== "ready") {
+          return json(res, 400, { error: "oauth_failed", message: result.message }, origin);
+        }
+        const applied = applyLlmPreset("grok", undefined, { haveStoredKey: true });
+        const saved = llm.save({ ...applied, authMode: "oauth" });
+        await putLlmSecret(
+          packLlmSecret({
+            kind: "oauth",
+            access: result.accessToken,
+            refresh: result.refreshToken,
+            expiresAt: Date.now() + result.expiresIn * 1000,
+          }),
+        );
+        audit.append({ actor: "user", action: "llm.oauth", detail: "grok" });
+        return json(res, 200, { status: "ready", llm: { ...saved, hasKey: true } }, origin);
+      } catch (e) {
+        return json(res, 400, { error: "oauth_failed", message: e instanceof Error ? e.message : String(e) }, origin);
       }
     }
 

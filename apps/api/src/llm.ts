@@ -9,6 +9,7 @@ export type LlmPublic = {
   model: string;
   hasKey: boolean;
   allowCloud: boolean;
+  authMode: "apikey" | "oauth";
 };
 
 type LlmFile = Omit<LlmPublic, "hasKey">;
@@ -20,6 +21,7 @@ const DEFAULTS: LlmFile = {
   baseUrl: "http://127.0.0.1:11434",
   model: "mistral",
   allowCloud: false,
+  authMode: "apikey",
 };
 
 export class LlmSettings {
@@ -45,6 +47,7 @@ export class LlmSettings {
         baseUrl: raw.baseUrl || DEFAULTS.baseUrl,
         model: raw.model || DEFAULTS.model,
         allowCloud: Boolean(raw.allowCloud),
+        authMode: raw.authMode === "oauth" ? "oauth" : "apikey",
       };
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
@@ -66,6 +69,7 @@ export class LlmSettings {
     model?: string;
     apiKey?: string;
     allowCloud?: boolean;
+    authMode?: "apikey" | "oauth";
   }): LlmPublic {
     const current = this.read();
     const baseUrl = (input.baseUrl ?? current.baseUrl).trim() || DEFAULTS.baseUrl;
@@ -81,6 +85,7 @@ export class LlmSettings {
       baseUrl,
       model: (input.model ?? current.model).trim() || DEFAULTS.model,
       allowCloud: input.allowCloud ?? current.allowCloud,
+      authMode: input.authMode ?? current.authMode,
     };
     if (new URL(next.baseUrl).protocol !== "http:" && new URL(next.baseUrl).protocol !== "https:") {
       throw new Error("LLM base URL must be http(s)");
