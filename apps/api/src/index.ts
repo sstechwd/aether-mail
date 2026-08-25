@@ -48,6 +48,7 @@ import { TokenCache } from "./tokencache.js";
 import { ensureFreshToken, type RefreshDeps } from "./tokenrefresh.js";
 import { SyncState, planFetch } from "./syncstate.js";
 import { findBulkSenders } from "./bulksenders.js";
+import { planBatch } from "./batchrules.js";
 import { parseUnsubscribe } from "./unsubscribe.js";
 import { buildConversation } from "./conversation.js";
 import { previewKind } from "./attachpreview.js";
@@ -1420,6 +1421,70 @@ const server = http.createServer(async (req, res) => {
       }
 
       return json(res, 400, { error: "bad_proposal" }, origin);
+    }
+
+    /*
+     * Accept several folder suggestions in one go.
+     *
+     * planBatch validates the WHOLE batch before anything is created, so a
+     * malformed entry cannot leave three rules behind and then fail. After the
+     * rules exist we run them once over the inbox, because a rule that leaves
+     * the backlog sitting there reads as broken.
+     */
+    if (req.method === "POST" && url.pathname === "/api/agent/approve-batch") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      if (!body) return json(res, 400, { error: "bad_json" }, origin);
+
+      const entries = Array.isArray(body.entries)
+        ? (body.entries as Array<{ match?: unknown; folder?: unknown }>).map((e) => ({
+            match: asString(e?.match, "", 300),
+            folder: asString(e?.folder, "", 100),
+          }))
+        : [];
+
+      const plan = planBatch(entries);
+      if (!plan.ok) {
+        return json(res, 400, { error: plan.error ?? "bad_batch" }, origin);
+      }
+
+      const created = plan.rules.map((r) =>
+        ruleBook.add({
+          field: r.field,
+          contains: r.contains,
+          action: r.action,
+          folder: r.folder,
+          enabled: true,
+        }),
+      );
+
+      // File the backlog once for the whole batch, not once per rule.
+      let filed = 0;
+      for (const msg of store.listMessages(activeAccountId, "INBOX", "newest")) {
+        const verdict = ruleBook.apply({
+          from: msg.from,
+          to: msg.to,
+          subject: msg.subject,
+          folder: msg.folder,
+        });
+        if (verdict?.action === "move" && verdict.folder) {
+          store.move(msg.id, verdict.folder);
+          filed += 1;
+        }
+      }
+
+      audit.append({
+        actor: "user",
+        action: "agent.batch.approved",
+        detail: `${created.length} rule(s), ${filed} filed`,
+      });
+
+      return json(
+        res,
+        201,
+        { created: created.length, filed, rules: ruleBook.list() },
+        origin,
+      );
     }
 
     /*

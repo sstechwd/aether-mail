@@ -418,6 +418,8 @@ export default function App() {
     reason?: string;
   };
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  /** Suggestions the user has ticked for batch approval. */
+  const [pickedSuggestions, setPickedSuggestions] = useState<string[]>([]);
   /** A pending agent automation suggestion, awaiting a human click. */
   const [proposal, setProposal] = useState<{
     proposal: unknown;
@@ -916,6 +918,33 @@ export default function App() {
       await loadSuggestions();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create that rule.");
+    }
+  }
+
+  /**
+   * Create rules for every ticked suggestion in one request.
+   *
+   * The server validates the whole batch before creating anything, so a bad
+   * entry cannot leave half the rules behind.
+   */
+  async function acceptPicked(): Promise<void> {
+    const chosen = suggestions.filter((s) => pickedSuggestions.includes(s.match) && !s.withheld);
+    if (chosen.length === 0) return;
+    if (!window.confirm(`File mail from ${chosen.length} senders into Archive?`)) return;
+    try {
+      const d = await api<{ created?: number; filed?: number }>("/api/agent/approve-batch", {
+        method: "POST",
+        body: JSON.stringify({
+          entries: chosen.map((c) => ({ match: c.match, folder: "Archive" })),
+        }),
+      });
+      setRuleNote(`Created ${d.created ?? 0} rules and filed ${d.filed ?? 0} messages.`);
+      setPickedSuggestions([]);
+      await refreshRules();
+      await loadSuggestions();
+      await refreshFolders();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create those rules.");
     }
   }
 
@@ -2019,12 +2048,23 @@ export default function App() {
                   .filter((s) => !s.withheld)
                   .map((s) => (
                     <div className="suggest-row" key={s.match}>
-                      <span className="suggest-what">
+                      <label className="suggest-what">
+                        <input
+                          type="checkbox"
+                          checked={pickedSuggestions.includes(s.match)}
+                          onChange={(e) =>
+                            setPickedSuggestions((prev) =>
+                              e.target.checked
+                                ? [...prev, s.match]
+                                : prev.filter((m) => m !== s.match),
+                            )
+                          }
+                        />{" "}
                         <strong>{s.count}</strong> from <em>{s.label}</em>
                         {s.unread > 0 ? (
                           <span className="suggest-unread">{s.unread} unread</span>
                         ) : null}
-                      </span>
+                      </label>
                       <span className="suggest-act">
                         <button
                           onClick={() => void acceptSuggestion(s, "Archive")}
@@ -2044,6 +2084,20 @@ export default function App() {
                       </span>
                     </div>
                   ))}
+                {/*
+                  Batch bar, only once something is ticked. Showing a disabled
+                  "Apply 0" button would just be noise on every visit.
+                */}
+                {pickedSuggestions.length > 0 ? (
+                  <div className="suggest-batch">
+                    <button onClick={() => void acceptPicked()}>
+                      File {pickedSuggestions.length} selected to Archive
+                    </button>
+                    <button className="ghost" onClick={() => setPickedSuggestions([])}>
+                      Clear
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {/*
