@@ -101,6 +101,11 @@ export class LlmSettings {
     return this.publicView();
   }
 
+  /** Drop a leftover session key so resolve() will read the keyring instead. */
+  forgetSessionKey(): void {
+    keys.delete("llm");
+  }
+
   resolve(): {
     baseUrl: string;
     model: string;

@@ -192,7 +192,6 @@ function openSystemBrowser(url: string): void {
  */
 async function resolveLlm(): Promise<ReturnType<typeof llm.resolve>> {
   const cfg = llm.resolve();
-  if (cfg.apiKey) return cfg;
   try {
     const got = await runMailCli(buildMailCliArgs({ action: "secret-get", secretRef: LLM_SECRET_REF }));
     const packed = got.ok ? (got.secret ?? "").trim() : "";
@@ -2119,6 +2118,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/settings/llm") {
+      try {
+        const got = await runMailCli(buildMailCliArgs({ action: "secret-get", secretRef: LLM_SECRET_REF }));
+        if (got.ok && (got.secret ?? "").trim()) llm.keyKnown = true;
+      } catch {
+        /* no key stored */
+      }
       return json(res, 200, { llm: llm.publicView(), presets: publicLlmPresets() }, origin);
     }
 
@@ -2226,6 +2231,7 @@ const server = http.createServer(async (req, res) => {
         }
         const applied = applyLlmPreset("grok", undefined, { haveStoredKey: true });
         const saved = llm.save({ ...applied, authMode: "oauth" });
+        llm.forgetSessionKey();
         await putLlmSecret(
           packLlmSecret({
             kind: "oauth",

@@ -21,4 +21,18 @@ describe("LlmSettings", () => {
     const disk = require("node:fs").readFileSync(file, "utf8") as string;
     expect(disk).not.toContain("sk-test");
   });
+
+  it("can drop the in-memory key so a later keyring value is used", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "aether-llm-")), "llm.json");
+    const llm = new LlmSettings(file);
+    llm.save({
+      baseUrl: "https://api.x.ai/v1",
+      model: "grok-4.6",
+      apiKey: "stale-session-key",
+      allowCloud: true,
+    });
+    expect(llm.resolve().apiKey).toBe("stale-session-key");
+    llm.forgetSessionKey();
+    expect(llm.resolve().apiKey).toBeUndefined();
+  });
 });

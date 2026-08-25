@@ -10,7 +10,7 @@ type Provider = {
   imap_host: string;
 };
 type SavedAccount = { id: string; email: string; provider: string; imap_host: string };
-type Llm = { provider: string; baseUrl: string; model: string; hasKey: boolean; allowCloud?: boolean };
+type Llm = { provider: string; baseUrl: string; model: string; hasKey: boolean; allowCloud?: boolean; authMode?: string };
 type LlmPreset = {
   id: string;
   label: string;
@@ -459,7 +459,8 @@ export default function Settings(props: { onClose: () => void }) {
                           setModel(polled.llm.model);
                           setBaseUrl(polled.llm.baseUrl);
                           setAllowCloud(Boolean(polled.llm.allowCloud));
-                          setNote("Grok is signed in with your SuperGrok subscription.");
+                          setOauthPrompt(null);
+                          setNote("Grok is signed in. Close Settings (top right), then ask the Assistant something.");
                           return;
                         }
                       }
@@ -515,7 +516,7 @@ export default function Settings(props: { onClose: () => void }) {
         ) : null}
         {llm ? (
           <p className="hint">
-            Active: {llm.model} · key {llm.hasKey ? "set" : "not set"}
+            Active: {llm.model} · {llm.authMode === "oauth" ? "signed in with SuperGrok" : `key ${llm.hasKey ? "set" : "not set"}`}
           </p>
         ) : null}
         <details className="llm-advanced">
