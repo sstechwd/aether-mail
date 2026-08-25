@@ -127,6 +127,31 @@ store.ensureFolder(FIXTURE_ACCOUNT.id, "Trash");
 store.ensureFolder(FIXTURE_ACCOUNT.id, "Drafts");
 const accounts = new AccountBook(dataPath("accounts.json"));
 const llm = new LlmSettings(dataPath("llm.json"));
+
+/** Keyring entry holding the cloud LLM API key. */
+const LLM_SECRET_REF = "keyring:aether-secrets/llm";
+
+/**
+ * The configured LLM, with its API key read from the OS keyring.
+ *
+ * The key used to sit in a module-level Map, so it was lost on restart and a
+ * paid provider silently stopped working. resolve() still returns whatever is
+ * in memory from this session; the keyring is the durable copy.
+ */
+async function resolveLlm(): Promise<ReturnType<typeof llm.resolve>> {
+  const cfg = llm.resolve();
+  if (cfg.apiKey) return cfg;
+  try {
+    const got = await runMailCli(
+      buildMailCliArgs({ action: "secret-get", secretRef: LLM_SECRET_REF }),
+    );
+    const key = got.ok ? (got.secret ?? "").trim() : "";
+    return key ? { ...cfg, apiKey: key } : cfg;
+  } catch {
+    // No key stored, or the CLI is unavailable: a local model needs neither.
+    return cfg;
+  }
+}
 const workflows = new WorkflowBook(dataPath("workflows.json"));
 const audit = new AuditLog(dataPath("audit.jsonl"));
 const persona = new PersonaBook(dataPath("persona.json"));
@@ -1851,7 +1876,7 @@ const server = http.createServer(async (req, res) => {
       if (!message || !body.skill || !allowed.includes(body.skill)) {
         return json(res, 400, { error: "need messageId and skill summarize|draft-reply|triage|action-items" });
       }
-      const cfg = llm.resolve();
+      const cfg = await resolveLlm();
       const memory = await sibyl.promptBlock(`${message.from} ${message.subject}`).catch(() => "");
       const result = await runAgent({
         skill: body.skill,
@@ -2051,7 +2076,28 @@ const server = http.createServer(async (req, res) => {
         allowCloud?: boolean;
       };
       try {
-        return json(res, 200, { llm: llm.save(body) }, origin);
+        const saved = llm.save(body);
+        /*
+         * Persist the API key in the OS keyring, not in memory.
+         *
+         * It used to live in a module-level Map, so it vanished on restart —
+         * a paid key silently stopped working and the agent looked broken.
+         * Same path as mail passwords: over stdin, never argv, never a file.
+         */
+        if (body.apiKey !== undefined) {
+          const key = body.apiKey.trim();
+          if (key) {
+            await runMailCli(
+              buildMailCliArgs({ action: "secret-put", secretRef: LLM_SECRET_REF }),
+              key,
+            );
+          } else {
+            await runMailCli(
+              buildMailCliArgs({ action: "secret-delete", secretRef: LLM_SECRET_REF }),
+            );
+          }
+        }
+        return json(res, 200, { llm: saved }, origin);
       } catch (e) {
         return json(res, 400, { error: "bad_llm", message: e instanceof Error ? e.message : String(e) }, origin);
       }
@@ -2141,7 +2187,7 @@ const server = http.createServer(async (req, res) => {
       } catch {
         /* not a workflow sentence — fall through to LLM */
       }
-      const cfg = llm.resolve();
+      const cfg = await resolveLlm();
       const memory = await sibyl.promptBlock(text).catch(() => "");
       try {
         const result = await chatWithMail({

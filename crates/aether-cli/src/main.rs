@@ -22,7 +22,7 @@ const MAX_INLINE_BYTES: usize = 2 * 1024 * 1024;
 /// rather than letting SMTP fail after the upload.
 const MAX_ATTACH_TOTAL: usize = 24 * 1024 * 1024;
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 struct JsonOut {
     ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,6 +39,9 @@ struct JsonOut {
     /// Highest UID in this response; the caller resumes above it next time.
     #[serde(skip_serializing_if = "Option::is_none")]
     highest_uid: Option<u32>,
+    /// Only ever set by secret-get, which is restricted to the LLM key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    secret: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -107,6 +110,7 @@ fn main() -> ExitCode {
                     part: None,
                     uid_validity: None,
                     highest_uid: None,
+            secret: None,
                 })
                 .unwrap_or_else(|_| "{\"ok\":false,\"error\":\"cli\"}".into())
             );
@@ -136,6 +140,7 @@ fn run() -> Result<(), String> {
     let flags = flags(&args);
     match action {
         "secret-put" => secret_put(&flags),
+        "secret-get" => secret_get(&flags),
         "secret-delete" => secret_delete(&flags),
         "probe" => probe(&flags),
         "fetch" => fetch_mail(&flags),
@@ -143,7 +148,7 @@ fn run() -> Result<(), String> {
         "send" => send_mail(&flags),
         "idle" => idle_wait(&flags),
         _ => Err(
-            "usage: aether-cli secret-put|secret-delete|probe|fetch|part|send|idle [flags]".into(),
+            "usage: aether-cli secret-put|secret-get|secret-delete|probe|fetch|part|send|idle [flags]".into(),
         ),
     }
 }
@@ -164,6 +169,38 @@ fn flags(args: &[String]) -> HashMap<String, String> {
 
 fn secrets() -> OsSecrets {
     OsSecrets::new(SERVICE)
+}
+
+/*
+ * Read one secret back out of the keyring.
+ *
+ * Deliberately NARROW: this exists so the API can retrieve the cloud LLM API
+ * key it stored, and it prints the secret on stdout. That is safe only because
+ * stdout goes to the API process over a pipe and is never logged — the same
+ * channel secret-put already uses in reverse.
+ *
+ * It is NOT a general "dump the keyring" tool: a mail password is only ever
+ * consumed inside this binary, so nothing needs to read one back.
+ */
+fn secret_get(flags: &HashMap<String, String>) -> Result<(), String> {
+    let refer = flags.get("secret-ref").ok_or("need --secret-ref")?;
+    if !refer.ends_with("/llm") {
+        return Err("secret-get is only for the llm key".into());
+    }
+    let secret = secrets()
+        .get(refer)
+        .map_err(|e| e.to_string())?
+        .ok_or("no secret stored")?;
+    println!(
+        "{}",
+        serde_json::to_string(&JsonOut {
+            ok: true,
+            secret: Some(secret),
+            ..Default::default()
+        })
+        .map_err(|e| e.to_string())?
+    );
+    Ok(())
 }
 
 fn secret_put(flags: &HashMap<String, String>) -> Result<(), String> {
@@ -187,6 +224,7 @@ fn secret_put(flags: &HashMap<String, String>) -> Result<(), String> {
             part: None,
             uid_validity: None,
             highest_uid: None,
+            secret: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -206,6 +244,7 @@ fn secret_delete(flags: &HashMap<String, String>) -> Result<(), String> {
             part: None,
             uid_validity: None,
             highest_uid: None,
+            secret: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -249,6 +288,7 @@ fn probe(flags: &HashMap<String, String>) -> Result<(), String> {
             part: None,
             uid_validity: None,
             highest_uid: None,
+            secret: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -313,6 +353,7 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
                     part: None,
                     uid_validity: None,
                     highest_uid: None,
+            secret: None,
                 })
                 .map_err(|e| e.to_string())?
             );
@@ -418,6 +459,7 @@ fn fetch_mail(flags: &HashMap<String, String>) -> Result<(), String> {
             } else {
                 None
             },
+            secret: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -488,6 +530,7 @@ fn fetch_part(flags: &HashMap<String, String>) -> Result<(), String> {
             }),
             uid_validity: None,
             highest_uid: None,
+            secret: None,
         })
         .map_err(|e| e.to_string())?
     );
@@ -676,6 +719,7 @@ fn send_mail(flags: &HashMap<String, String>) -> Result<(), String> {
             part: None,
             uid_validity: None,
             highest_uid: None,
+            secret: None,
         })
         .map_err(|e| e.to_string())?
     );

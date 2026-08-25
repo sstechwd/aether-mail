@@ -3073,3 +3073,15 @@ textarea:focus-visible {
 }
 .suggest-what input[type="checkbox"] { margin-right: 4px; vertical-align: middle; }
 label.suggest-what { cursor: pointer; }
+
+/* ===== First run: no real account yet ================================ */
+.first-run {
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+.first-run strong { display: block; margin-bottom: 6px; color: var(--ink); font-size: 13px; }
+.first-run p { margin: 0 0 10px; color: var(--ink-soft); font-size: 12px; line-height: 1.45; }
+.first-run-go { width: 100%; }

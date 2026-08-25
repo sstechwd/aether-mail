@@ -10,6 +10,7 @@ export type MailCliAction =
   | "send"
   | "idle"
   | "secret-put"
+  | "secret-get"
   | "secret-delete";
 
 export function buildMailCliArgs(input: {
@@ -68,6 +69,8 @@ export type MailCliResult = {
   error?: string;
   /** For `idle`: why the wait ended — "activity" means fetch now. */
   woke?: "activity" | "timeout";
+  /** Only set by secret-get, which the CLI restricts to the LLM key. */
+  secret?: string;
   /** Mailbox UIDVALIDITY, for detecting a server-side renumber. */
   uid_validity?: number;
   /** Highest UID returned; undefined when nothing new arrived. */

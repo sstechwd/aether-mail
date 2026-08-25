@@ -1769,13 +1769,30 @@ export default function App() {
       </header>
 
       <aside className={showFolders ? "folders open" : "folders"}>
+        {/*
+          First run: no real account yet. A new user otherwise lands on a
+          demo mailbox with no indication that it is a demo, or where to go
+          next — which reads as "this app came with someone else's mail".
+        */}
+        {savedAccounts.length === 0 && !adding ? (
+          <div className="first-run">
+            <strong>You're looking at a demo mailbox</strong>
+            <p>
+              Nothing here is real. Add your own account to see your mail — it stays on this
+              machine, and your password goes to the system keyring, never to a file.
+            </p>
+            <button className="first-run-go" onClick={() => setAdding(true)}>
+              Add your email account
+            </button>
+          </div>
+        ) : null}
         <p className="acct">Accounts</p>
         <button
           type="button"
           className={activeAccountId === "fixture" ? "acct-line on" : "acct-line"}
           onClick={() => selectAccount("fixture")}
         >
-          Local fixture
+          {savedAccounts.length === 0 ? "Demo mailbox" : "Local fixture"}
         </button>
         {savedAccounts.map((a) => (
           <button
