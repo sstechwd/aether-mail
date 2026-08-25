@@ -3086,9 +3086,34 @@ label.suggest-what { cursor: pointer; }
 .first-run p { margin: 0 0 10px; color: var(--ink-soft); font-size: 12px; line-height: 1.45; }
 .first-run-go { width: 100%; }
 
-/* LLM provider presets */
-.llm-presets { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
-.llm-presets .hint { margin: 0; }
+/* LLM provider cards — Hermes-style pick, then paste a key */
+.llm-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+.llm-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.llm-card strong { font-size: 13px; }
+.llm-card span { font-size: 11px; color: var(--muted); }
+.llm-card em { font-size: 10px; font-style: normal; color: var(--accent); }
+.llm-card.on { border-color: var(--accent); background: var(--accent-soft); }
+.llm-card.current:not(.on) { border-color: var(--line-strong); }
+.llm-pick { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.llm-advanced { margin: 10px 0 0; color: var(--ink-soft); font-size: 12px; }
+.llm-advanced summary { cursor: pointer; color: var(--muted); }
 
 /* Cloud model: say plainly what leaves the machine. */
 .cloud-warn {

@@ -11,6 +11,7 @@ import { PROVIDERS } from "./providers.js";
 import { AccountBook, peekSecret } from "./accounts.js";
 import { corsHeaders, MAX_BODY_BYTES, publicAccount, rejectCrossSite } from "./security.js";
 import { LlmSettings } from "./llm.js";
+import { applyLlmPreset, matchPreset, publicLlmPresets } from "./llm-presets.js";
 import { ChatThread } from "./chat.js";
 import { buildMailCliArgs, runMailCli } from "./mailio.js";
 import { prepareSend } from "./send-prepare.js";
@@ -2053,7 +2054,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/settings/llm") {
-      return json(res, 200, { llm: llm.publicView() }, origin);
+      return json(res, 200, { llm: llm.publicView(), presets: publicLlmPresets() }, origin);
     }
 
     if (req.method === "GET" && url.pathname === "/api/settings/inspect") {
@@ -2069,6 +2070,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/settings/llm") {
       const raw = await readBody(req);
       const body = JSON.parse(raw || "{}") as {
+        preset?: string;
         provider?: string;
         baseUrl?: string;
         model?: string;
@@ -2076,7 +2078,22 @@ const server = http.createServer(async (req, res) => {
         allowCloud?: boolean;
       };
       try {
-        const saved = llm.save(body);
+        /*
+         * A named preset fills URL + model + the cloud flag so the user
+         * never types api.anthropic.com. The key is still required for
+         * Claude / OpenAI / Grok — a chat subscription is not an API key.
+         */
+        const current = llm.publicView();
+        const samePreset = Boolean(body.preset && matchPreset(current.baseUrl)?.id === body.preset);
+        const incoming = body.preset
+          ? {
+              ...body,
+              ...applyLlmPreset(body.preset, body.apiKey, {
+                haveStoredKey: samePreset && current.hasKey,
+              }),
+            }
+          : body;
+        const saved = llm.save(incoming);
         /*
          * Persist the API key in the OS keyring, not in memory.
          *

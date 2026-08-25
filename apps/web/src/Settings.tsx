@@ -11,6 +11,18 @@ type Provider = {
 };
 type SavedAccount = { id: string; email: string; provider: string; imap_host: string };
 type Llm = { provider: string; baseUrl: string; model: string; hasKey: boolean; allowCloud?: boolean };
+type LlmPreset = {
+  id: string;
+  label: string;
+  kind: "local" | "cloud";
+  baseUrl: string;
+  model: string;
+  allowCloud: boolean;
+  needsKey: boolean;
+  keyHost: string;
+  keyUrl: string;
+  billingNote: string;
+};
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl(path), {
@@ -43,6 +55,8 @@ export default function Settings(props: { onClose: () => void }) {
   const [sigNote, setSigNote] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
   const [llm, setLlm] = useState<Llm | null>(null);
+  const [presets, setPresets] = useState<LlmPreset[]>([]);
+  const [pickId, setPickId] = useState("ollama");
   const [providerId, setProviderId] = useState("gmail");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -72,12 +86,16 @@ export default function Settings(props: { onClose: () => void }) {
   useEffect(() => {
     api<{ providers: Provider[] }>("/api/providers").then((d) => setProviders(d.providers)).catch((e: Error) => setNote(e.message));
     api<{ accounts: SavedAccount[] }>("/api/accounts").then((d) => setAccounts(d.accounts)).catch((e: Error) => setNote(e.message));
-    api<{ llm: Llm }>("/api/settings/llm")
+    api<{ llm: Llm; presets?: LlmPreset[] }>("/api/settings/llm")
       .then((d) => {
         setLlm(d.llm);
         setModel(d.llm.model);
         setBaseUrl(d.llm.baseUrl);
         setAllowCloud(Boolean(d.llm.allowCloud));
+        const list = d.presets ?? [];
+        setPresets(list);
+        const match = list.find((p) => p.baseUrl.replace(/\/$/, "") === d.llm.baseUrl.replace(/\/$/, ""));
+        if (match) setPickId(match.id);
       })
       .catch((e: Error) => setNote(e.message));
     api<{ workflows: Array<{ id: string; spoken: string; action: string }> }>("/api/workflows")
@@ -98,6 +116,7 @@ export default function Settings(props: { onClose: () => void }) {
   }, []);
 
   const selected = providers.find((p) => p.id === providerId);
+  const pickedLlm = presets.find((p) => p.id === pickId);
 
   return (
     <div className="settings">
@@ -347,121 +366,149 @@ export default function Settings(props: { onClose: () => void }) {
         </label>
       </section>
       <section>
-        <h2>Agent LLM</h2>
-        <p className="hint">Default is local Ollama. Keys stay in memory, never in llm.json. Lean: 8-turn chat, 80 tokens, 45s timeout.</p>
-        <label>
-          Model
-          <input value={model} onChange={(e) => setModel(e.target.value)} />
-        </label>
-        {/*
-          Presets. Nobody should have to know that Claude lives at
-          api.anthropic.com or what this month's model id is — getting either
-          wrong fails as an opaque 404 or "bad key".
-        */}
-        <div className="llm-presets">
-          <span className="hint">Quick setup:</span>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => {
-              setBaseUrl("http://127.0.0.1:11434");
-              setModel("mistral");
-              setAllowCloud(false);
-            }}
-          >
-            Ollama (local, free)
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => {
-              setBaseUrl("https://api.anthropic.com");
-              setModel("claude-sonnet-4-20250514");
-              setAllowCloud(true);
-            }}
-          >
-            Claude
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => {
-              setBaseUrl("https://api.openai.com/v1");
-              setModel("gpt-4o-mini");
-              setAllowCloud(true);
-            }}
-          >
-            OpenAI
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => {
-              // xAI speaks the OpenAI shape, so no special client is needed.
-              setBaseUrl("https://api.x.ai/v1");
-              setModel("grok-4");
-              setAllowCloud(true);
-            }}
-          >
-            Grok
-          </button>
+        <h2>Agent model</h2>
+        <p className="hint">
+          Pick a provider, paste an API key, done. Keys go in Windows Credential Manager, never
+          into llm.json. A ChatGPT / Claude / SuperGrok subscription is not an API key.
+        </p>
+        <div className="llm-cards" role="list">
+          {presets.map((p) => {
+            const active = llm && p.baseUrl.replace(/\/$/, "") === llm.baseUrl.replace(/\/$/, "");
+            return (
+              <button
+                key={p.id}
+                type="button"
+                role="listitem"
+                className={`llm-card${pickId === p.id ? " on" : ""}${active ? " current" : ""}`}
+                onClick={() => {
+                  setPickId(p.id);
+                  setBaseUrl(p.baseUrl);
+                  setModel(p.model);
+                  setAllowCloud(p.allowCloud);
+                  setApiKey("");
+                }}
+              >
+                <strong>{p.label}</strong>
+                <span>{p.kind === "local" ? "This computer" : p.keyHost}</span>
+                {active ? <em>in use</em> : null}
+              </button>
+            );
+          })}
         </div>
-        <label>
-          Base URL
-          <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-        </label>
-        <label>
-          API key (optional BYOK)
-          <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" />
-        </label>
-        <label>
-          <input type="checkbox" checked={allowCloud} onChange={(e) => setAllowCloud(e.target.checked)} />
-          Allow a non-localhost model (sends the open message to that URL)
-        </label>
-        {/*
-          Say plainly what a cloud model means. The checkbox label alone
-          under-sells it: the actual content of a message you open — including
-          anything private in it — is uploaded to that provider.
-        */}
-        {allowCloud && !baseUrl.includes("127.0.0.1") && !baseUrl.includes("localhost") ? (
-          <p className="cloud-warn">
-            The text of whichever message you run the agent on is sent to{" "}
-            <strong>{(() => { try { return new URL(baseUrl).hostname; } catch { return baseUrl; } })()}</strong>,
-            along with any notes the assistant has saved about that sender. Only that one message,
-            only when you press a button — never your whole mailbox, and never in the background.
-            Your mail is still stored only on this machine.
-          </p>
+        {pickedLlm ? (
+          <div className="llm-pick">
+            {pickedLlm.needsKey ? (
+              <>
+                <label>
+                  API key from {pickedLlm.keyHost}
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    autoComplete="off"
+                    placeholder="paste key"
+                  />
+                </label>
+                <p className="hint">
+                  Get a key at{" "}
+                  <a href={pickedLlm.keyUrl} target="_blank" rel="noreferrer">
+                    {pickedLlm.keyHost}
+                  </a>
+                  . {pickedLlm.billingNote}
+                </p>
+                <p className="cloud-warn">
+                  When you run the agent, that one open message is sent to{" "}
+                  <strong>{pickedLlm.keyHost}</strong> — never the rest of the mailbox, and never
+                  in the background.
+                </p>
+              </>
+            ) : (
+              <p className="hint">
+                Uses whatever model is already running in Ollama on this computer. Nothing is
+                uploaded.
+              </p>
+            )}
+            <button
+              type="button"
+              disabled={
+                saving ||
+                (Boolean(pickedLlm.needsKey) &&
+                  !apiKey.trim() &&
+                  !(llm?.hasKey && llm.baseUrl.replace(/\/$/, "") === pickedLlm.baseUrl.replace(/\/$/, "")))
+              }
+              onClick={() => {
+                setNote(null);
+                setSaving(true);
+                api<{ llm: Llm }>("/api/settings/llm", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    preset: pickedLlm.id,
+                    apiKey: apiKey.trim() || undefined,
+                  }),
+                })
+                  .then((d) => {
+                    setLlm(d.llm);
+                    setModel(d.llm.model);
+                    setBaseUrl(d.llm.baseUrl);
+                    setAllowCloud(Boolean(d.llm.allowCloud));
+                    setApiKey("");
+                    setNote(`${pickedLlm.label} is now the agent model.`);
+                  })
+                  .catch((e: Error) => setNote(e.message))
+                  .finally(() => setSaving(false));
+              }}
+            >
+              {saving ? "Saving…" : `Use ${pickedLlm.label}`}
+            </button>
+          </div>
         ) : null}
-        <button
-          onClick={() => {
-            setNote(null);
-            api<{ llm: Llm }>("/api/settings/llm", {
-              method: "POST",
-              body: JSON.stringify({
-                // Let the server decide the wire format from the URL. Port
-                // sniffing got Claude wrong, and a user has no reason to know
-                // that Anthropic and OpenAI speak different protocols.
-                baseUrl,
-                model,
-                apiKey: apiKey || undefined,
-                allowCloud,
-              }),
-            })
-              .then((d) => {
-                setLlm(d.llm);
-                setApiKey("");
-                setNote(`LLM saved: ${d.llm.model} @ ${d.llm.baseUrl}`);
-              })
-              .catch((e: Error) => setNote(e.message));
-          }}
-        >
-          Save LLM
-        </button>
         {llm ? (
           <p className="hint">
-            Active: {llm.model} · {llm.baseUrl} · key {llm.hasKey ? "set" : "not set"}
+            Active: {llm.model} · key {llm.hasKey ? "set" : "not set"}
           </p>
         ) : null}
+        <details className="llm-advanced">
+          <summary>Advanced — custom URL</summary>
+          <label>
+            Model
+            <input value={model} onChange={(e) => setModel(e.target.value)} />
+          </label>
+          <label>
+            Base URL
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+          </label>
+          <label>
+            API key
+            <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" />
+          </label>
+          <label>
+            <input type="checkbox" checked={allowCloud} onChange={(e) => setAllowCloud(e.target.checked)} />
+            Allow a non-localhost model (sends the open message to that URL)
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              setNote(null);
+              api<{ llm: Llm }>("/api/settings/llm", {
+                method: "POST",
+                body: JSON.stringify({
+                  baseUrl,
+                  model,
+                  apiKey: apiKey.trim() || undefined,
+                  allowCloud,
+                }),
+              })
+                .then((d) => {
+                  setLlm(d.llm);
+                  setApiKey("");
+                  setNote(`LLM saved: ${d.llm.model} @ ${d.llm.baseUrl}`);
+                })
+                .catch((e: Error) => setNote(e.message));
+            }}
+          >
+            Save custom
+          </button>
+        </details>
       </section>
       <section>
         <h2>Workflows</h2>

@@ -1,11 +1,23 @@
 # STATUS — Aether Mail
 
-**Updated:** 2026-08-21 · `main` and `dev` at `3a488ed` · repo is **PUBLIC** (MIT)
+**Updated:** 2026-08-25 · `dev` at `0f6fc75` plus unpushed LLM-card work · repo is **PUBLIC** (MIT)
 
 ## Run it
 
-Double-click `scripts\run-app.bat`. Rebuild after code changes with
-`scripts\build-app.bat` (it closes the running app first).
+Double-click `scripts/run-app.bat`.
+
+**Installer (today, 15:02, 25 MB, unsigned):**
+`C:/Users/Sumo/Documents/aether-mail/target/release/bundle/nsis/Aether Mail_0.1.0_x64-setup.exe`
+
+Windows SmartScreen will warn — there is no code-signing cert yet. There is **no GitHub Release**; sharing means sending that file.
+
+Rebuild after code changes with `scripts\build-app.bat` (it closes the running app first).
+
+## Agent model — Claude / OpenAI / Grok
+
+Settings → **Agent model**. Four cards: Ollama, Claude, OpenAI, Grok. Click one, paste an API key from the provider console, click Use. No URLs to type.
+
+A ChatGPT / claude.ai / SuperGrok **subscription will not work**. You need an API key (`sk-ant-…`, `sk-…`, `xai-…`). Mail use is cents a month, not a second $20. The key stays in Windows Credential Manager.
 
 ## The one thing that needs you
 
