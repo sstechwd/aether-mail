@@ -77,6 +77,7 @@ export async function completeLocal(opts: {
   apiKey?: string;
   provider?: "ollama" | "openai-compatible" | "anthropic";
   allowCloud?: boolean;
+  reasoningEffort?: "low" | "medium" | "high";
 }): Promise<{ text: string; model: string }> {
   const model = opts.model ?? "mistral";
   const baseUrl = (opts.ollamaUrl ?? "http://127.0.0.1:11434").replace(/\/$/, "");
@@ -106,7 +107,7 @@ export async function completeLocal(opts: {
     // parseAnthropicReply surfaces the provider's own message, which is far
     // more useful than "LLM 401" when the cause is usually a bad key.
     const text = parseAnthropicReply(raw).trim();
-    recordUsage({ promptChars: opts.prompt.length, completion: estimateTokens(text), cap: 80 });
+    recordUsage({ promptChars: opts.prompt.length, completion: estimateTokens(text), cap: 256 });
     return { text, model };
   }
 
@@ -114,7 +115,13 @@ export async function completeLocal(opts: {
     wire === "openai-compatible" || Boolean(opts.apiKey && !isLoopbackLlm(baseUrl));
   if (useOpenAi) {
     if (!opts.apiKey) throw new Error("Cloud / OpenAI-compatible models need an API key in Settings");
-    const req = buildOpenAiRequest({ baseUrl, model, apiKey: opts.apiKey, prompt: opts.prompt });
+    const req = buildOpenAiRequest({
+      baseUrl,
+      model,
+      apiKey: opts.apiKey,
+      prompt: opts.prompt,
+      reasoningEffort: opts.reasoningEffort,
+    });
     const res = await fetch(req.url, {
       method: "POST",
       headers: req.headers,
@@ -144,7 +151,7 @@ export async function completeLocal(opts: {
     }
     const data = JSON.parse(raw) as { choices?: Array<{ message?: { content?: string } }> };
     const text = (data.choices?.[0]?.message?.content ?? "").trim();
-    recordUsage({ promptChars: opts.prompt.length, completion: estimateTokens(text), cap: 80 });
+    recordUsage({ promptChars: opts.prompt.length, completion: estimateTokens(text), cap: 256 });
     return { text, model };
   }
   const generateUrl = baseUrl.endsWith("/v1") ? `${baseUrl.slice(0, -3)}/api/generate` : `${baseUrl}/api/generate`;
@@ -183,7 +190,8 @@ export async function chatWithMail(opts: {
   provider?: "ollama" | "openai-compatible" | "anthropic";
   allowCloud?: boolean;
   memory?: string;
-}): Promise<{ text: string; model: string; refused: string[] }> {
+  reasoningEffort?: "low" | "medium" | "high";
+  }): Promise<{ text: string; model: string; refused: string[] }> {
   const mailBlock = opts.mail
     ? `Open message:\nFrom: ${opts.mail.from}\nSubject: ${opts.mail.subject}\n${opts.mail.body.slice(0, 800)}`
     : "No message is open.";
@@ -204,6 +212,7 @@ Reply in a few short sentences. Do not send mail.`;
     apiKey: opts.apiKey,
     provider: opts.provider,
     allowCloud: opts.allowCloud,
+    reasoningEffort: opts.reasoningEffort,
   });
   const refused: string[] = [];
   if (opts.mail && /attacker@|forward every|delete the originals/i.test(opts.mail.body)) {
@@ -233,6 +242,7 @@ export async function runAgent(opts: {
    * before anything acts on it.
    */
   instructionOverride?: string;
+  reasoningEffort?: "low" | "medium" | "high";
 }): Promise<AgentResult> {
   const task = opts.instructionOverride ?? taskFor(opts.skill);
 
@@ -253,6 +263,7 @@ ${opts.body}`;
     apiKey: opts.apiKey,
     provider: opts.provider,
     allowCloud: opts.allowCloud,
+    reasoningEffort: opts.reasoningEffort,
   });
   const refused: string[] = [];
   if (/attacker@|forward every|delete the originals/i.test(opts.body)) {

@@ -1440,12 +1440,19 @@ const server = http.createServer(async (req, res) => {
       if (!msg) return json(res, 404, { error: "no_message" }, origin);
 
       try {
+        const cfg = await resolveLlm();
         const reply = await runAgent({
           skill: "triage",
           from: msg.from,
           subject: msg.subject,
           body: (msg.body ?? "").slice(0, 4000),
           instructionOverride: `${PROPOSAL_SCHEMA}\n\nSuggest one automation for this message.`,
+          model: cfg.model,
+          ollamaUrl: cfg.baseUrl,
+          apiKey: cfg.apiKey,
+          provider: cfg.provider,
+          allowCloud: cfg.allowCloud,
+          reasoningEffort: cfg.effort,
         });
         const proposal = parseProposal(reply.text ?? "");
         if (!proposal) {
@@ -1955,6 +1962,7 @@ const server = http.createServer(async (req, res) => {
         allowCloud: cfg.allowCloud,
         voice: persona.promptBlock() || undefined,
         memory: memory || undefined,
+        reasoningEffort: cfg.effort,
       });
       if (result.skill === "draft-reply") {
         drafts.set(message.id, {
@@ -2146,6 +2154,7 @@ const server = http.createServer(async (req, res) => {
         model?: string;
         apiKey?: string;
         allowCloud?: boolean;
+        effort?: "low" | "medium" | "high";
       };
       try {
         /*
@@ -2155,12 +2164,14 @@ const server = http.createServer(async (req, res) => {
          */
         const current = llm.publicView();
         const samePreset = Boolean(body.preset && matchPreset(current.baseUrl)?.id === body.preset);
+        const grokOauthReady = body.preset === "grok" && current.authMode === "oauth" && current.hasKey;
         const incoming = body.preset
           ? {
               ...body,
               ...applyLlmPreset(body.preset, body.apiKey, {
-                haveStoredKey: samePreset && current.hasKey,
+                haveStoredKey: (samePreset || grokOauthReady) && current.hasKey,
               }),
+              authMode: grokOauthReady ? "oauth" : body.preset === "ollama" ? "apikey" : current.authMode,
             }
           : body;
         const saved = llm.save(incoming);
@@ -2344,6 +2355,7 @@ const server = http.createServer(async (req, res) => {
           provider: cfg.provider,
           allowCloud: cfg.allowCloud,
           memory: memory || undefined,
+          reasoningEffort: cfg.effort,
         });
         chat.add("assistant", result.text);
         return json(res, 200, { turns: chat.list(), result }, origin);

@@ -28,4 +28,25 @@ describe("llm policy", () => {
     expect(JSON.stringify(req.body)).not.toContain("sk-test");
     expect(req.body.max_tokens).toBe(256);
   });
+
+  it("asks Grok for medium reasoning so mail chat is not the ultra-slow default", () => {
+    const req = buildOpenAiRequest({
+      baseUrl: "https://api.x.ai/v1",
+      model: "grok-4.6",
+      apiKey: "xai-test-not-real",
+      prompt: "Summarize this",
+    });
+    expect(req.body.reasoning_effort).toBe("medium");
+    expect(req.body.max_tokens).toBeGreaterThan(80);
+  });
+
+  it("does not send reasoning_effort to OpenAI", () => {
+    const req = buildOpenAiRequest({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o-mini",
+      apiKey: "sk-test-not-real",
+      prompt: "Summarize this",
+    });
+    expect(req.body.reasoning_effort).toBeUndefined();
+  });
 });
