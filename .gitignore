@@ -58,3 +58,8 @@ data/*.bak
 backups/
 data/tokens.json
 data/syncstate.json
+
+# Private strategy notes — stay on disk, not on the public tree
+docs/INCOME.md
+docs/MONETIZATION.md
+docs/SEED.md

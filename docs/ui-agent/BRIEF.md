@@ -1,7 +1,8 @@
 # UI agent brief
 
-Work only under `C:\Users\Sumo\Documents\aether-mail`.
+Work only under `C:\Users\Sumo\Documents\aether-mail-ui` (branch `ui-design`).
 Do **not** change IMAP/SMTP/secrets. Theme the existing 3-pane React UI.
+Read `docs/TECHNICAL.md` then `docs/ui-agent/HANDOFF.md`.
 
 ## Product
 

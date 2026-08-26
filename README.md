@@ -120,12 +120,6 @@ a config file, never on a command line, never in a log. Details in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/SECURITY.md`](docs/SECURITY.md),
 and the binding conventions in [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md).
 
-## Money
-
-The client is MIT and stays free. There is no paid tier of your own mailbox, no ads,
-no pay-to-send. If hosted models ever ship, they will be an optional add-on for people
-who do not want to run one locally — see [`docs/INCOME.md`](docs/INCOME.md).
-
 ## Security
 
 It is an email client, so please report anything you find:

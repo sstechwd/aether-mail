@@ -23,4 +23,4 @@ HTML mail is hostile. We strip tags and **do not show remote images**. A count o
 
 ## What is not this week
 
-Obsidian plugin, terminal nano-client, marketplace, investor CRM. OSS MIT client first. Money path is still `docs/INCOME.md` (optional Aether+), not a seed deck.
+Obsidian plugin, terminal nano-client, marketplace. OSS MIT client first.

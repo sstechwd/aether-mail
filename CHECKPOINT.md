@@ -1,7 +1,7 @@
 # CHECKPOINT — Aether Mail
 
 **Read this first in a new chat. It replaces re-reading the codebase.**
-**Last updated:** 2026-08-25 evening · `dev`. **UI restyle:** read `docs/ui-agent/HANDOFF.md` first.
+**Last updated:** 2026-08-25 · `dev` @ 0.1.1. **UI restyle:** `docs/TECHNICAL.md` then `docs/ui-agent/HANDOFF.md`. Work UI in `aether-mail-ui`.
 Green: **vitest 75/33**, **cargo workspace pass**, **clippy clean**, **installer builds**. ~7,400 LOC.
 
 ---
@@ -11,7 +11,7 @@ Green: **vitest 75/33**, **cargo workspace pass**, **clippy clean**, **installer
 A local-first, downloadable desktop **email client** (not a host) with a Thunderbird-shaped
 3-pane UI plus a lean in-process agent. User brings their own IMAP/SMTP account. Privacy-first:
 mailbox never leaves the machine, passwords in OS keyring, agent can propose but never sends.
-MIT core; money later = optional hosted models (Aether+), never paywalling mail.
+MIT client. No ads. No paywall on read or send.
 
 ## 2. Stack (LOCKED — do not relitigate)
 
@@ -41,7 +41,7 @@ apps/api/src/     Node UI host. index.ts is the router. 26 modules + 30 test fil
   accounts.ts account-switch.ts mailio.ts send-prepare.ts security.ts llm*.ts
 apps/web/src/     App.tsx (main 3-pane), Settings.tsx, AgentChat.tsx, Templates.tsx, themes.ts
 crates/           aether-cli (mail I/O + `part` cmd), mail-store (SQLite), mail-core (+mime.rs), aether-secrets
-docs/             ARCHITECTURE, ROADMAP, SECURITY, SIGNING, STORAGE, INCOME, SIBYL, CONVENTIONS (binding), adr/
+docs/             ARCHITECTURE, ROADMAP, SECURITY, SIGNING, STORAGE, TECHNICAL, SIBYL, CONVENTIONS (binding), adr/
 .github/workflows ci.yml (fmt+clippy+tests+build on PR), release.yml (tag -> installer + provenance)
 data/             *.json + *.jsonl (gitignored). mail.json, accounts.json, sibyl.db, meta.json
 apps/desktop/     Tauri 2 shell: src/lib.rs (sidecar lifecycle), tauri.conf.json, icons/, sidecar/ (gitignored build output)
