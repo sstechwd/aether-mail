@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { appRoot } from "./approot.js";
+import { appRoot, isPackaged } from "./approot.js";
 
 export type MailCliAction =
   | "probe"
@@ -51,21 +51,64 @@ export function buildMailCliArgs(input: {
   return args;
 }
 
-export function findMailCli(): string | null {
-  if (process.env.AETHER_CLI && existsSync(process.env.AETHER_CLI)) return process.env.AETHER_CLI;
-  const root = appRoot();
-  const names = process.platform === "win32" ? ["aether-cli.exe"] : ["aether-cli"];
-  const dirs = [
-    path.join(root, "target", "release"),
-    path.join(root, "target", "debug"),
-    path.dirname(process.execPath),
-    process.cwd(),
-  ];
+export type MailCliSearch = {
+  platform: string;
+  env: Record<string, string | undefined>;
+  execPath: string;
+  cwd: string;
+  appRoot: string;
+};
+
+/**
+ * Places a packaged install would keep aether-cli.
+ *
+ * Fresh NSIS puts it next to the sidecar. Source trees keep it in
+ * target/release. The Start Menu often launches us with cwd=System32, so
+ * cwd is the last place we look, not the first.
+ */
+export function mailCliCandidates(input: MailCliSearch): string[] {
+  const join = input.platform === "win32" ? path.win32.join : path.posix.join;
+  const dirname = input.platform === "win32" ? path.win32.dirname : path.posix.dirname;
+  const exe = input.platform === "win32" ? "aether-cli.exe" : "aether-cli";
+  const names = input.platform === "win32" ? [exe, "aether-cli"] : [exe];
+
+  const pinned = input.env.AETHER_CLI?.trim();
+  const dirs: string[] = [];
+  const add = (d: string): void => {
+    if (d && !dirs.includes(d)) dirs.push(d);
+  };
+
+  let walk = dirname(input.execPath);
+  for (let i = 0; i < 4; i += 1) {
+    add(walk);
+    add(join(walk, "resources"));
+    const up = dirname(walk);
+    if (up === walk) break;
+    walk = up;
+  }
+  add(join(input.appRoot, "target", "release"));
+  add(join(input.appRoot, "target", "debug"));
+  add(input.appRoot);
+  add(input.cwd);
+
+  const out: string[] = [];
+  if (pinned) out.push(pinned);
   for (const dir of dirs) {
-    for (const name of names) {
-      const candidate = path.join(dir, name);
-      if (existsSync(candidate)) return candidate;
-    }
+    for (const name of names) out.push(join(dir, name));
+  }
+  return out;
+}
+
+export function findMailCli(): string | null {
+  const candidates = mailCliCandidates({
+    platform: process.platform,
+    env: process.env,
+    execPath: process.execPath,
+    cwd: process.cwd(),
+    appRoot: appRoot(),
+  });
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
   }
   return null;
 }
@@ -111,7 +154,9 @@ export function runMailCli(args: string[], stdinText?: string): Promise<MailCliR
   if (!bin) {
     return Promise.resolve({
       ok: false,
-      error: "aether-cli not built. From the repo: cargo build -p aether-cli",
+      error: isPackaged()
+        ? "Mail helper missing from this install. Uninstall Aether Mail, then run the latest setup."
+        : "aether-cli not built. From the repo: cargo build -p aether-cli",
     });
   }
   return new Promise((resolve) => {

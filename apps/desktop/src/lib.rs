@@ -7,6 +7,8 @@
 //! Security posture: the API binds 127.0.0.1 only. Nothing here opens a network
 //! surface, and no secret is passed on argv (aether-cli reads the OS keyring).
 
+use std::path::PathBuf;
+
 use tauri::Manager;
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
@@ -21,6 +23,22 @@ fn api_base() -> String {
     "http://127.0.0.1:8787".to_string()
 }
 
+fn bundled_cli() -> Option<(PathBuf, PathBuf)> {
+    let name = if cfg!(target_os = "windows") {
+        "aether-cli.exe"
+    } else {
+        "aether-cli"
+    };
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let cli = dir.join(name);
+    if cli.is_file() {
+        Some((dir.to_path_buf(), cli))
+    } else {
+        None
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -33,13 +51,29 @@ pub fn run() {
             // window: the UI shows its own "API unreachable" state, which is a
             // better failure than a silent blank screen.
             match app.shell().sidecar("aether-api") {
-                Ok(cmd) => match cmd.spawn() {
-                    Ok((_rx, child)) => {
-                        let state = app.state::<ApiProcess>();
-                        *state.0.lock().unwrap() = Some(child);
+                Ok(mut cmd) => {
+                    // Point the sidecar at bundled aether-cli. Start Menu
+                    // launches with cwd=System32; the CLI is next to us, not there.
+                    if let Some((dir, cli)) = bundled_cli() {
+                        cmd = cmd.env("AETHER_CLI", cli.as_os_str());
+                        cmd = cmd.current_dir(dir);
+                    } else if let Ok(dir) = app.path().resource_dir() {
+                        let name = if cfg!(target_os = "windows") {
+                            "aether-cli.exe"
+                        } else {
+                            "aether-cli"
+                        };
+                        cmd = cmd.env("AETHER_CLI", dir.join(name).as_os_str());
+                        cmd = cmd.current_dir(&dir);
                     }
-                    Err(e) => eprintln!("aether: could not start api sidecar: {e}"),
-                },
+                    match cmd.spawn() {
+                        Ok((_rx, child)) => {
+                            let state = app.state::<ApiProcess>();
+                            *state.0.lock().unwrap() = Some(child);
+                        }
+                        Err(e) => eprintln!("aether: could not start api sidecar: {e}"),
+                    }
+                }
                 Err(e) => eprintln!("aether: api sidecar not bundled: {e}"),
             }
             Ok(())
