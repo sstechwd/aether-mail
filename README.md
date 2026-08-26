@@ -81,7 +81,7 @@ that is four commands — see [Build from source](#build-from-source).
 |---|---|
 | **No mail OAuth yet** | Gmail/Outlook **accounts** still need an [app password](https://support.google.com/accounts/answer/185833). SuperGrok (the **model**, not the mailbox) can sign in with X Premium+. |
 | **Unsigned installer** | SmartScreen warning, see above. |
-| **Windows only for now** | The stack is cross-platform; nobody has built and tested the macOS/Linux bundles yet. |
+| **Windows installer today** | macOS and Linux build from source **on that OS** — see [`docs/PACKAGING.md`](docs/PACKAGING.md). |
 | **Large download** | ~25MB, most of which is a bundled Node runtime for the temporary API layer. Porting it to Rust will cut this to ~8MB. |
 | **Proton** | Works only through [Proton Bridge](https://proton.me/mail/bridge). Tutanota is not supported — it has no IMAP. |
 

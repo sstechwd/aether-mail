@@ -15,13 +15,13 @@ Open http://127.0.0.1:5173/  (hard-refresh after a pull/restart)
 - **Reply** / Draft reply → Confirm send names the **sender**. Fixture SMTP still honest-fails until a real account.
 - Chat/Settings: `move newsletters to spam`, `keep invoices unread`, Forget a rule
 - **?** shortcut list. Esc closes overlays. Phone **Folders** drawer.
-- **Fetch INBOX** on the toolbar after you save an account.
+- Toolbar **Sync now** is optional — new mail should appear on its own.
 - Settings: Your voice, Workflows, Audit (30 days)
 - **+ New folder**, **Move to…**, Unread only
 
 ## Real mail
 
-`cargo build -p aether-cli` first. App password only. Fetch INBOX. Do not LAN-bind the API.
+`cargo build -p aether-cli` first. App password only. Mail watches INBOX (IDLE + 2 min poll). Do not LAN-bind the API.
 
 ## Not this build
 

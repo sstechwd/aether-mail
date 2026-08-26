@@ -21,6 +21,7 @@ import {
 } from "./panes.js";
 import { toggleSelection, rangeSelection, UndoStack } from "./selection.js";
 import { dragExceeded, folderFromPoint } from "./drag.js";
+import { stampChanged, type InboxStamp } from "./watch.js";
 import Settings from "./Settings";
 import AgentChat from "./AgentChat";
 import Templates from "./Templates";
@@ -222,6 +223,8 @@ export default function App() {
       return "INBOX";
     }
   });
+  const folderRef = useRef(folder);
+  folderRef.current = folder;
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Message | null>(null);
@@ -260,6 +263,7 @@ export default function App() {
   const [previewPart, setPreviewPart] = useState<number | null>(null);
   const [imagesOn, setImagesOn] = useState(false);
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
+  const [watchingInbox, setWatchingInbox] = useState(false);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [unreadOnly, setUnreadOnly] = useState(false);
   /** Group the list into conversations. Persisted: it is a reading preference. */
@@ -499,11 +503,25 @@ export default function App() {
         }
       })
       .catch((e: Error) => setError(e.message));
+    const stampRef = { current: null as InboxStamp | null };
     const tick = () => {
-      api<{ lastFetchAt: string | null; unread: number }>("/api/health")
+      api<{ lastFetchAt: string | null; unread: number; inboxTotal?: number; watching?: boolean }>("/api/health")
         .then((d) => {
           setLastFetchAt(d.lastFetchAt);
           setUnreadTotal(d.unread);
+          setWatchingInbox(Boolean(d.watching));
+          const next: InboxStamp = {
+            lastFetchAt: d.lastFetchAt,
+            unread: d.unread,
+            inboxTotal: d.inboxTotal ?? 0,
+          };
+          if (stampRef.current === null) {
+            stampRef.current = next;
+          } else if (stampChanged(stampRef.current, next)) {
+            stampRef.current = next;
+            void refreshFolders();
+            void refreshMessages(folderRef.current);
+          }
         })
         .catch(() => undefined);
     };
@@ -1709,7 +1727,7 @@ export default function App() {
                   .finally(() => setBusy(null));
               }}
             >
-              {busy === "fetch" ? "Fetching…" : "Fetch INBOX"}
+              {busy === "fetch" ? "Syncing…" : "Sync now"}
             </button>
           ) : null}
           <button disabled={!selected} onClick={() => starSelected().catch((e: Error) => setError(e.message))}>
@@ -3248,12 +3266,16 @@ export default function App() {
         <span className="sb-unread">{unreadTotal} unread</span>
         <span className="sb-sync">
           {busy === "fetch"
-            ? "Fetching newest 40 from IMAP…"
-            : lastFetchAt
-              ? `Last fetch ${lastFetchAt.slice(11, 16)} UTC`
-              : "Fixture only — no live fetch yet"}
+            ? "Syncing IMAP…"
+            : watchingInbox
+              ? lastFetchAt
+                ? `Watching inbox · last ${lastFetchAt.slice(11, 16)} UTC`
+                : "Watching inbox"
+              : lastFetchAt
+                ? `Last sync ${lastFetchAt.slice(11, 16)} UTC`
+                : "Add an account — mail will arrive on its own"}
         </span>
-        <span className="sb-agent">{busy === "fetch" ? "IMAP" : busy ? `working: ${busy}` : "idle"}</span>
+        <span className="sb-agent">{busy === "fetch" ? "IMAP" : busy ? `working: ${busy}` : watchingInbox ? "live" : "idle"}</span>
       </footer>
 
       {/* Right-click menu. Closes on any click elsewhere or Escape. */}

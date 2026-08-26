@@ -7,7 +7,7 @@ Order is daily-driver mail, then agentic. Not themes.
 3. **Rules you can see and undo** — Rules sidebar, Run on Inbox, undo toast after a move.
 4. **Short command chains** — “file this to Receipts and always do that for this sender”.
 5. **Search that finds mail** — FTS5 exists; the box has to feel like Outlook, not a debug field.
-6. **Incoming without Fetch** — IMAP IDLE / periodic sync so new mail appears.
+6. **Incoming without Fetch** — IMAP IDLE + UI refresh. In this build.
 7. **Gmail/Outlook OAuth** — app passwords are a stopgap.
 8. **Only then** — richer calendar, more models, polish.
 

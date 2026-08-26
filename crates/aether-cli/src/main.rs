@@ -844,11 +844,9 @@ fn idle_wait(flags: &HashMap<String, String>) -> Result<(), String> {
     // Some servers go quiet and drop an idle connection that never speaks.
     handle.set_keepalive(std::time::Duration::from_secs(5 * 60));
 
-    let woke = match handle.wait_timeout(timeout) {
-        Ok(()) => "activity",
-        // A timeout is a normal, expected outcome, not a failure: it just
-        // means nothing arrived in the window and the caller should loop.
-        Err(_) => "timeout",
+    let woke = match handle.wait_with_timeout(timeout) {
+        Ok(imap::extensions::idle::WaitOutcome::MailboxChanged) => "activity",
+        _ => "timeout",
     };
 
     println!(

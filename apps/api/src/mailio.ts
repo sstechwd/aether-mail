@@ -55,9 +55,15 @@ export function findMailCli(): string | null {
   if (process.env.AETHER_CLI && existsSync(process.env.AETHER_CLI)) return process.env.AETHER_CLI;
   const root = appRoot();
   const names = process.platform === "win32" ? ["aether-cli.exe"] : ["aether-cli"];
-  for (const profile of ["release", "debug"]) {
+  const dirs = [
+    path.join(root, "target", "release"),
+    path.join(root, "target", "debug"),
+    path.dirname(process.execPath),
+    process.cwd(),
+  ];
+  for (const dir of dirs) {
     for (const name of names) {
-      const candidate = path.join(root, "target", profile, name);
+      const candidate = path.join(dir, name);
       if (existsSync(candidate)) return candidate;
     }
   }

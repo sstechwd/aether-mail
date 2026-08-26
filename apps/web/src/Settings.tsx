@@ -144,7 +144,7 @@ export default function Settings(props: { onClose: () => void }) {
                   .finally(() => setFetching(false));
               }}
             >
-              {fetching ? "Fetching…" : "Fetch INBOX"}
+              {fetching ? "Syncing…" : "Sync now"}
             </button>{" "}
             <button
               onClick={() => {

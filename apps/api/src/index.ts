@@ -547,12 +547,12 @@ if (typeof outboxTimer.unref === "function") outboxTimer.unref();
  * Mail that only arrives when you press a button is not a mail client, it is a
  * viewer. Every account is synced on an interval and once shortly after start.
  *
- * Deliberately conservative: a five-minute default, skipped entirely while a
+ * Deliberately conservative: a two-minute default, skipped entirely while a
  * manual sync is running so the two cannot overlap on the same mailbox, and a
  * single failure is logged rather than retried aggressively — a wrong password
  * should not become a login-attempt flood at someone's provider.
  */
-const AUTO_SYNC_MS = Number(process.env.AETHER_SYNC_MS ?? 5 * 60 * 1000);
+const AUTO_SYNC_MS = Number(process.env.AETHER_SYNC_MS ?? 2 * 60 * 1000);
 let autoSyncRunning = false;
 
 async function autoSyncAll(): Promise<void> {
@@ -603,6 +603,7 @@ if (AUTO_SYNC_MS > 0) {
 const IDLE_ENABLED = process.env.AETHER_IDLE !== "0";
 const IDLE_WINDOW_S = Number(process.env.AETHER_IDLE_WINDOW ?? 600);
 const idleStopped = new Set<string>();
+const idleStarted = new Set<string>();
 
 async function idleLoop(accountId: string): Promise<void> {
   let backoffMs = 5_000;
@@ -615,7 +616,6 @@ async function idleLoop(accountId: string): Promise<void> {
     try {
       const fresh = await ensureFreshToken(account, tokenCache, refreshDeps);
       if (!fresh.ok) {
-        // Signed out: stop rather than loop on a credential that cannot work.
         console.warn(`idle: ${fresh.reason}`);
         return;
       }
@@ -636,24 +636,29 @@ async function idleLoop(accountId: string): Promise<void> {
       if (!result.ok) throw new Error(result.error ?? "idle failed");
       backoffMs = 5_000;
 
-      // Woke on activity: fetch. Woke on timeout: loop and idle again.
       if (result.woke === "activity") {
         await autoSyncAll();
       }
     } catch (e) {
       console.warn(`idle: ${e instanceof Error ? e.message : String(e)}`);
       await new Promise((r) => setTimeout(r, backoffMs));
-      // Cap at five minutes: past that the polling timer covers us anyway.
       backoffMs = Math.min(backoffMs * 2, 5 * 60_000);
     }
   }
 }
 
+function startIdle(accountId: string): void {
+  if (!IDLE_ENABLED) return;
+  if (idleStarted.has(accountId) || idleStopped.has(accountId)) return;
+  idleStarted.add(accountId);
+  void idleLoop(accountId);
+}
+
 if (IDLE_ENABLED) {
-  const startIdle = setTimeout(() => {
-    for (const account of accounts.list()) void idleLoop(account.id);
+  const startIdleAll = setTimeout(() => {
+    for (const account of accounts.list()) startIdle(account.id);
   }, 25_000);
-  if (typeof startIdle.unref === "function") startIdle.unref();
+  if (typeof startIdleAll.unref === "function") startIdleAll.unref();
 }
 // Catch anything that came due while the app was closed.
 setTimeout(() => {
@@ -685,6 +690,8 @@ const server = http.createServer(async (req, res) => {
         account: { id: activeAccountId },
         lastFetchAt,
         unread: store.listFolders(activeAccountId).reduce((n, f) => n + (f.name === "Starred" ? 0 : f.unread), 0),
+        inboxTotal: store.listFolders(activeAccountId).find((f) => f.name === "INBOX")?.total ?? 0,
+        watching: IDLE_ENABLED && accounts.list().length > 0,
       });
     }
 
@@ -2120,6 +2127,8 @@ const server = http.createServer(async (req, res) => {
         } else {
           probeNote += ` IMAP probe failed: ${probe.error}. Account metadata saved; mail not fetched.`;
         }
+        startIdle(account.id);
+        void autoSyncAll();
         return json(res, 201, {
           account: publicAccount(account),
           probe: probeNote,

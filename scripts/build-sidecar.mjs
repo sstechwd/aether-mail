@@ -16,8 +16,17 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sidecarDir = path.join(root, "apps", "desktop", "sidecar");
 const entry = path.join(root, "apps", "api", "src", "index.ts");
 
-// Tauri looks for <name>-<target-triple><ext>.
-const TRIPLE = process.env.TAURI_TARGET_TRIPLE ?? "x86_64-pc-windows-msvc";
+// Tauri looks for <name>-<target-triple><ext>. Infer the host triple so a
+// Mac or Linux checkout does not emit a Windows sidecar name.
+function hostTriple() {
+  if (process.env.TAURI_ENV_TARGET_TRIPLE) return process.env.TAURI_ENV_TARGET_TRIPLE;
+  if (process.env.TAURI_TARGET_TRIPLE) return process.env.TAURI_TARGET_TRIPLE;
+  const cpu = process.arch === "arm64" ? "aarch64" : "x86_64";
+  if (process.platform === "win32") return `${cpu}-pc-windows-msvc`;
+  if (process.platform === "darwin") return `${cpu}-apple-darwin`;
+  return `${cpu}-unknown-linux-gnu`;
+}
+const TRIPLE = hostTriple();
 const EXT = process.platform === "win32" ? ".exe" : "";
 const outExe = path.join(sidecarDir, `aether-api-${TRIPLE}${EXT}`);
 const bundle = path.join(sidecarDir, "aether-api.cjs");
