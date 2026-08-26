@@ -17,7 +17,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 /** Which header the rule looks at. */
-export type RuleField = "from" | "to" | "subject";
+export type RuleField = "from" | "to" | "subject" | "body";
 
 /** What the rule does. Note there is no "reply" or "forward". */
 export type RuleAction = "move" | "star" | "read";
@@ -36,7 +36,7 @@ export type Rule = {
 export type RuleInput = Omit<Rule, "id">;
 
 /** The subset of a message a rule can see. */
-export type RuleTarget = { from: string; to: string; subject: string; folder: string };
+export type RuleTarget = { from: string; to: string; subject: string; folder: string; body?: string };
 
 /**
  * Does this rule fire for this message?
@@ -48,7 +48,13 @@ export function matchesRule(rule: Rule, msg: RuleTarget): boolean {
   if (!rule.enabled) return false;
   const needle = (rule.contains ?? "").trim().toLowerCase();
   if (!needle) return false;
-  const hay = (msg[rule.field] ?? "").toLowerCase();
+  const bag: Record<string, string> = {
+    from: msg.from ?? "",
+    to: msg.to ?? "",
+    subject: msg.subject ?? "",
+    body: msg.body ?? "",
+  };
+  const hay = (bag[rule.field] ?? "").toLowerCase();
   return hay.includes(needle);
 }
 

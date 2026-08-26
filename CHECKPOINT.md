@@ -1,7 +1,7 @@
 # CHECKPOINT — Aether Mail
 
 **Read this first in a new chat. It replaces re-reading the codebase.**
-**Last updated:** 2026-08-25 · branch `dev` at `0f6fc75` + local LLM-card work. Repo is **PUBLIC**.
+**Last updated:** 2026-08-25 evening · `dev`. **UI restyle:** read `docs/ui-agent/HANDOFF.md` first.
 Green: **vitest 75/33**, **cargo workspace pass**, **clippy clean**, **installer builds**. ~7,400 LOC.
 
 ---

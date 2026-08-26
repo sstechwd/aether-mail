@@ -59,6 +59,19 @@ describe("matchesRule", () => {
     expect(matchesRule(rule, MSG)).toBe(false);
   });
 
+  it("can match on the body", () => {
+    const rule: Rule = {
+      id: "1",
+      field: "body",
+      contains: "unsubscribe",
+      action: "move",
+      folder: "News",
+      enabled: true,
+    };
+    expect(matchesRule(rule, { ...MSG, body: "click unsubscribe below" })).toBe(true);
+    expect(matchesRule(rule, { ...MSG, body: "hello" })).toBe(false);
+  });
+
   it("handles a message with missing fields", () => {
     const rule: Rule = { id: "1", field: "subject", contains: "q3", action: "star", enabled: true };
     expect(matchesRule(rule, { from: "", to: "", subject: "", folder: "INBOX" })).toBe(false);

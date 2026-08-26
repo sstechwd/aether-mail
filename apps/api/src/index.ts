@@ -27,6 +27,7 @@ import {
   xaiTokenEndpointOk,
   oauthBrowserUrlOk,
 } from "./llm-oauth.js";
+import { openInOsBrowser, safeOpenUrl } from "./openurl.js";
 import { ChatThread } from "./chat.js";
 import { buildMailCliArgs, runMailCli } from "./mailio.js";
 import { prepareSend } from "./send-prepare.js";
@@ -695,6 +696,15 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (req.method === "POST" && url.pathname === "/api/open-url") {
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw);
+      const target = asString(body?.url ?? "", "", 2000);
+      if (!safeOpenUrl(target)) return json(res, 400, { error: "bad_url" }, origin);
+      openInOsBrowser(target);
+      return json(res, 200, { ok: true }, origin);
+    }
+
     if (req.method === "GET" && url.pathname === "/api/folders") {
       return json(res, 200, { account: { id: activeAccountId }, folders: store.listFolders(activeAccountId) });
     }
@@ -1310,6 +1320,7 @@ const server = http.createServer(async (req, res) => {
         expires: Date.now() + 10 * 60_000,
       });
       audit.append({ actor: "user", action: "oauth.start", detail: provider });
+      openInOsBrowser(started.url);
       return json(res, 200, { url: started.url, state: started.state }, origin);
     }
 
@@ -1381,7 +1392,20 @@ const server = http.createServer(async (req, res) => {
         action: "oauth.complete",
         detail: `${pending.provider} ${stored.ok ? "stored" : "store-failed"}`,
       });
-      page(stored.ok ? "Signed in. Return to Aether." : "Signed in, but storing the token failed.");
+      if (pending.email.includes("@")) {
+        try {
+          const account = accounts.add({
+            provider: pending.provider,
+            email: pending.email,
+            oauth: true,
+          });
+          startIdle(account.id);
+          void autoSyncAll();
+        } catch {
+          /* already added */
+        }
+      }
+      page(stored.ok ? "Signed in. Return to Aether — your mailbox is connecting." : "Signed in, but storing the token failed.");
       return;
     }
 
@@ -1614,6 +1638,7 @@ const server = http.createServer(async (req, res) => {
           to: msg.to,
           subject: msg.subject,
           folder: msg.folder,
+          body: msg.body,
         });
         if (verdict?.action === "move" && verdict.folder) {
           store.move(msg.id, verdict.folder);
@@ -1782,7 +1807,7 @@ const server = http.createServer(async (req, res) => {
       if (!body) return json(res, 400, { error: "bad_json" }, origin);
       const field = asString(body.field);
       const action = asString(body.action);
-      if (!["from", "to", "subject"].includes(field)) {
+      if (!["from", "to", "subject", "body"].includes(field)) {
         return json(res, 400, { error: "bad_field" }, origin);
       }
       if (!["move", "star", "read"].includes(action)) {
@@ -1827,6 +1852,7 @@ const server = http.createServer(async (req, res) => {
           to: msg.to ?? "",
           subject: msg.subject ?? "",
           folder: msg.folder ?? folder,
+          body: msg.body ?? "",
         });
         if (!rule) continue;
         if (rule.action === "move" && rule.folder) store.move(msg.id, rule.folder);
@@ -2404,7 +2430,8 @@ const server = http.createServer(async (req, res) => {
                 to: msg.to ?? "",
                 subject: msg.subject ?? "",
                 folder: msg.folder ?? "INBOX",
-              });
+                body: msg.body ?? "",
+                });
               if (!hit || hit.id !== rule.id) continue;
               if (hit.folder) store.move(msg.id, hit.folder);
               filed += 1;
@@ -2431,7 +2458,8 @@ const server = http.createServer(async (req, res) => {
                 to: msg.to ?? "",
                 subject: msg.subject ?? "",
                 folder: msg.folder ?? "INBOX",
-              });
+                body: msg.body ?? "",
+                });
               if (!hit || hit.id !== rule.id) continue;
               if (hit.action === "move" && hit.folder) store.move(msg.id, hit.folder);
               else if (hit.action === "star") store.setStarred(msg.id, true);
@@ -2638,6 +2666,7 @@ const server = http.createServer(async (req, res) => {
           to: msg.to ?? "",
           subject: msg.subject ?? "",
           folder: msg.folder ?? "INBOX",
+          body: msg.body ?? "",
         });
         if (!rule) continue;
         if (rule.action === "move" && rule.folder) store.move(msg.id, rule.folder);

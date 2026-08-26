@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 
 export type InspectPrefs = { autoInspect: boolean; alwaysShow: boolean };
 
-const DEFAULTS: InspectPrefs = { autoInspect: true, alwaysShow: false };
+const DEFAULTS: InspectPrefs = { autoInspect: false, alwaysShow: false };
 
 export class InspectBook {
   constructor(private filePath: string) {}
@@ -12,7 +12,7 @@ export class InspectBook {
     try {
       const raw = JSON.parse(readFileSync(this.filePath, "utf8")) as Partial<InspectPrefs>;
       return {
-        autoInspect: raw.autoInspect !== false,
+        autoInspect: raw.autoInspect === true,
         alwaysShow: Boolean(raw.alwaysShow),
       };
     } catch (err) {

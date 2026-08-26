@@ -333,7 +333,7 @@ export default function App() {
   const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
   /** Filing rules, and the new-rule form on the Rules page. */
   const [rules, setRules] = useState<Rule[]>([]);
-  const [ruleField, setRuleField] = useState<"from" | "to" | "subject">("from");
+  const [ruleField, setRuleField] = useState<"from" | "to" | "subject" | "body">("from");
   const [ruleText, setRuleText] = useState("");
   const [ruleAction, setRuleAction] = useState<"move" | "star" | "read">("move");
   const [ruleFolder, setRuleFolder] = useState("Archive");
@@ -542,6 +542,18 @@ export default function App() {
       /* ignore */
     }
   }, [folder, sort, threaded]);
+
+  useEffect(() => {
+    const onMsg = (ev: MessageEvent) => {
+      const data = ev.data as { type?: string; href?: string };
+      if (data?.type !== "aether-open" || typeof data.href !== "string") return;
+      void api("/api/open-url", { method: "POST", body: JSON.stringify({ url: data.href }) }).catch(
+        () => undefined,
+      );
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
 
   // Ask once whether a unified inbox is worth offering. With one account it
   // is a duplicate of the inbox, so the nav entry stays hidden.
@@ -761,7 +773,7 @@ export default function App() {
     const header = `<header><h1>${esc(selected.subject || "(no subject)")}</h1>
       <div class="meta">${esc(selected.from)} · ${esc(formatWhen(selected.date))}</div></header>`;
     const bodyHtml = mailHtml
-      ? `<iframe sandbox="" referrerpolicy="no-referrer" srcdoc="${mailHtml.replace(/"/g, "&quot;")}"></iframe>`
+      ? `<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc="${mailHtml.replace(/"/g, "&quot;")}"></iframe>`
       : `<pre>${esc(selected.body ?? "")}</pre>`;
     win.document.write(
       `<!doctype html><html><head><meta charset="utf-8"><title>${esc(
@@ -1500,15 +1512,14 @@ export default function App() {
   async function replySelected() {
     const current = selectedRef.current;
     if (!current) return;
-    const data = await api<{ message: Message; folders: Folder[] }>(`/api/messages/${current.id}/reply`, {
-      method: "POST",
-    });
-    if (data.message) {
-      setFolders(data.folders);
-      setFolder("Drafts");
-      setSelectedId(data.message.id);
-      setDraft(data.message.body);
-    }
+    const angled = /<([^>]+)>/.exec(current.from);
+    const to = (angled ? angled[1] : current.from).trim();
+    setComposeTo(to);
+    setComposeSubject(/^re:/i.test(current.subject) ? current.subject : `Re: ${current.subject}`);
+    setComposeBody("");
+    setComposeHtml("");
+    if (composeRef.current) composeRef.current.innerHTML = "";
+    setComposing(true);
   }
 
   async function forwardSelected() {
@@ -1661,7 +1672,8 @@ export default function App() {
           <span className="mark">Æ</span>
           <strong>Add a mailbox</strong>
           <p>
-            This is a client, not a host. Use an app password. The fixture inbox stays for practice.
+            Sign in with Google or Microsoft in your browser — no app password. Or add IMAP. The
+            fixture inbox stays for practice.
           </p>
           <button
             type="button"
@@ -1675,7 +1687,7 @@ export default function App() {
               }
             }}
           >
-            Add Gmail / IMAP
+            Add Gmail / Outlook / IMAP
           </button>
           <button
             type="button"
@@ -2580,6 +2592,7 @@ export default function App() {
                   <option value="from">sender</option>
                   <option value="to">recipient</option>
                   <option value="subject">subject</option>
+                  <option value="body">body</option>
                 </select>
               </label>
               <label>
@@ -2950,10 +2963,9 @@ export default function App() {
               <iframe
                 className="mail-frame"
                 title="Message"
-                // Locked down: no scripts, no forms, no same-origin. Mail is
-                // hostile input. This is why the height has to be measured
-                // from out here rather than reported by the page itself.
-                sandbox=""
+                // Scripts only run our click-bridge (sanitizer stripped the rest).
+                // No same-origin, no forms. Clicks postMessage; we open Firefox.
+                sandbox="allow-scripts"
                 referrerPolicy="no-referrer"
                 srcDoc={mailHtml}
                 onLoad={(e) => fitMailFrame(e.currentTarget)}
@@ -3068,8 +3080,16 @@ export default function App() {
         {error ? <p className="error">{error}</p> : null}
       </main>
       {composing ? (
+        <div className="compose-veil" onClick={() => setComposing(false)} />
+      ) : null}
+      {composing ? (
         <div className="compose">
-          <strong>New message</strong>
+          <div className="compose-head">
+            <strong>New message</strong>
+            <button type="button" className="ghost" onClick={() => setComposing(false)}>
+              Close
+            </button>
+          </div>
           <div className="to-field">
             <input
               placeholder="To"

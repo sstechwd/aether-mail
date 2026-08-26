@@ -76,7 +76,7 @@ export default function Settings(props: { onClose: () => void }) {
   const [saving, setSaving] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthPrompt, setOauthPrompt] = useState<{ url: string; userCode: string } | null>(null);
-  const [autoInspect, setAutoInspect] = useState(true);
+  const [autoInspect, setAutoInspect] = useState(false);
   const [alwaysShow, setAlwaysShow] = useState(false);
 
   useEffect(() => {
@@ -163,7 +163,10 @@ export default function Settings(props: { onClose: () => void }) {
         ))}
         {fetching ? <div className="token-bar busy" aria-live="polite"><i /><em>IMAP…</em></div> : null}
         <h3>Add account</h3>
-        <p className="hint">App password, not your main login. Password goes to Windows Credential Manager.</p>
+        <p className="hint">
+          Prefer <b>Sign in with Google / Microsoft</b> (opens Firefox). App password is the fallback.
+          If sign-in says it is not configured, set AETHER_OAUTH_CLIENT_GMAIL — see docs/OAUTH.md.
+        </p>
         <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
           {providers.map((p) => (
             <option key={p.id} value={p.id}>
@@ -189,6 +192,10 @@ export default function Settings(props: { onClose: () => void }) {
             className="oauth-btn"
             disabled={saving}
             onClick={() => {
+              if (!email.includes("@")) {
+                setNote("Type the address first, then Sign in.");
+                return;
+              }
               setNote("Opening your browser…");
               api<{ url?: string; error?: string; message?: string }>("/api/oauth/start", {
                 method: "POST",
@@ -196,8 +203,7 @@ export default function Settings(props: { onClose: () => void }) {
               })
                 .then((d) => {
                   if (d.url) {
-                    window.open(d.url, "_blank", "noopener,noreferrer");
-                    setNote("Finish signing in in your browser, then come back.");
+                    setNote("Finish signing in in your browser, then come back. Aether will connect the mailbox.");
                   } else {
                     setNote(d.message ?? d.error ?? "Sign-in is not configured.");
                   }

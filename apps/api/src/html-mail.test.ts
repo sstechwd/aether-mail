@@ -39,14 +39,15 @@ describe("sanitizeMailHtml", () => {
     const blocked = sanitizeMailHtml(RAW, { allowRemoteImages: false });
     expect(blocked).toContain("Hello");
     expect(blocked).toContain("<b>Priya</b>");
-    expect(blocked.toLowerCase()).not.toContain("<script");
+    expect(blocked).not.toContain("alert(1)");
     expect(blocked.toLowerCase()).not.toContain("<iframe");
     expect(blocked).not.toContain("javascript:");
     expect(blocked).not.toContain("onerror");
+    expect(blocked).toContain("aether-open");
     expect(blocked).not.toMatch(/<img[^>]+https:\/\/evil\.example\/pixel\.gif/i);
     expect(blocked).toContain("data-blocked-src");
     const open = sanitizeMailHtml(RAW, { allowRemoteImages: true });
     expect(open).toContain("https://evil.example/pixel.gif");
-    expect(open.toLowerCase()).not.toContain("<script");
+    expect(open).not.toContain("alert(1)");
   });
 });

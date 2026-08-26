@@ -65,14 +65,19 @@ export function sanitizeMailHtml(raw: string, opts: { allowRemoteImages: boolean
   // data: is always permitted for images because those bytes came from the message
   // itself; http(s) stays gated behind the user's explicit Load choice.
   const imgSrc = opts.allowRemoteImages ? "img-src http: https: data:;" : "img-src data:;";
-  const csp = `default-src 'none'; ${imgSrc} style-src 'unsafe-inline'; font-src 'none'; script-src 'none'; frame-src 'none';`;
-  // No max-width on the body: the message decides its own width. Clamping it
-  // here is what made wide newsletters look squeezed into a narrow column.
+  const csp = `default-src 'none'; ${imgSrc} style-src 'unsafe-inline'; font-src 'none'; script-src 'unsafe-inline'; frame-src 'none';`;
   const shell =
     "body{font:15px/1.6 system-ui,-apple-system,Segoe UI,sans-serif;color:#111;margin:0;padding:12px 14px;background:#fff}" +
     "img{max-width:100%;height:auto}" +
     "table{max-width:100%}" +
     "a{color:#0b5fff}" +
     ".blocked-img,.cid{color:#666;font-size:13px}";
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${shell}</style></head><body>${html}</body></html>`;
+  /*
+   * Clicks cannot navigate this iframe (sandbox). A tiny script posts the
+   * href to the parent; the parent opens the system browser. Sanitizer has
+   * already stripped sender scripts.
+   */
+  const bridge =
+    "<script>(function(){document.addEventListener(\"click\",function(e){var n=e.target;while(n&&n.nodeName!==\"A\")n=n.parentNode;if(!n||!n.href)return;var h=n.getAttribute(\"href\")||n.href;if(/^(https?:|mailto:)/i.test(h)){e.preventDefault();parent.postMessage({type:\"aether-open\",href:h},\"*\");}},true);}())</script>";
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${shell}</style></head><body>${html}${bridge}</body></html>`;
 }

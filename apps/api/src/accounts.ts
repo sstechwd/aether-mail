@@ -60,6 +60,7 @@ export class AccountBook {
     smtp_host?: string;
     smtp_port?: number;
     smtp_tls?: string;
+    oauth?: boolean;
   }): AccountRecord {
     const preset = PROVIDERS.find((p) => p.id === input.provider);
     if (!preset) throw new Error("unknown provider");
@@ -67,11 +68,11 @@ export class AccountBook {
     const email = input.email.trim();
     if (!email.includes("@")) throw new Error("need an email address");
     const password = input.password ?? "";
-    if (!password) throw new Error("need a password or app password (sent only to this machine)");
+    if (!input.oauth && !password) throw new Error("need a password or app password (sent only to this machine)");
 
     const id = `acc-${randomId()}`;
-    const secret_ref = `keyring:${id}`;
-    secrets.put(secret_ref, password);
+    const secret_ref = input.oauth ? `oauth:${preset.id}:${email}` : `keyring:${id}`;
+    if (!input.oauth) secrets.put(secret_ref, password);
 
     const row: AccountRecord = {
       id,
@@ -86,7 +87,7 @@ export class AccountBook {
       smtp_tls: input.smtp_tls || preset.smtp_tls,
       username: (input.username || email).trim(),
       secret_ref,
-      auth_method: preset.auth_method,
+      auth_method: input.oauth ? "oauth" : preset.auth_method,
     };
     if (!row.imap_host) throw new Error("need IMAP host");
     const rows = this.read();
