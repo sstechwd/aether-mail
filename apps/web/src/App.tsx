@@ -176,6 +176,36 @@ function fitMailFrame(frame: HTMLIFrameElement): void {
   window.setTimeout(measure, 600);
 }
 
+/**
+ * Clicks in the mail iframe cannot navigate (sandbox). Read the href from
+ * this side — same-origin srcdoc, no scripts — and hand it to the API so
+ * Firefox opens. That is how a blocked banner image still goes to the shop.
+ */
+function bindMailClicks(frame: HTMLIFrameElement, openUrl: (href: string) => void): void {
+  try {
+    const doc = frame.contentDocument;
+    if (!doc || doc.documentElement.dataset.aetherClicks === "1") return;
+    doc.documentElement.dataset.aetherClicks = "1";
+    doc.addEventListener(
+      "click",
+      (ev) => {
+        const t = ev.target as Element | null;
+        if (!t || typeof t.closest !== "function") return;
+        const a = t.closest("a");
+        if (!a) return;
+        const href = (a.getAttribute("href") ?? "").trim();
+        if (!/^(https?:|mailto:)/i.test(href)) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        openUrl(href);
+      },
+      true,
+    );
+  } catch {
+    /* unique-origin iframe — nothing to bind */
+  }
+}
+
 /** Bytes -> what a person reads next to a filename. */
 function humanSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
@@ -773,7 +803,7 @@ export default function App() {
     const header = `<header><h1>${esc(selected.subject || "(no subject)")}</h1>
       <div class="meta">${esc(selected.from)} · ${esc(formatWhen(selected.date))}</div></header>`;
     const bodyHtml = mailHtml
-      ? `<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc="${mailHtml.replace(/"/g, "&quot;")}"></iframe>`
+      ? `<iframe sandbox="allow-same-origin" referrerpolicy="no-referrer" srcdoc="${mailHtml.replace(/"/g, "&quot;")}"></iframe>`
       : `<pre>${esc(selected.body ?? "")}</pre>`;
     win.document.write(
       `<!doctype html><html><head><meta charset="utf-8"><title>${esc(
@@ -2963,12 +2993,19 @@ export default function App() {
               <iframe
                 className="mail-frame"
                 title="Message"
-                // Scripts only run our click-bridge (sanitizer stripped the rest).
-                // No same-origin, no forms. Clicks postMessage; we open Firefox.
-                sandbox="allow-scripts"
+                // No scripts. Same-origin so we can bind clicks and size the frame.
+                sandbox="allow-same-origin"
                 referrerPolicy="no-referrer"
                 srcDoc={mailHtml}
-                onLoad={(e) => fitMailFrame(e.currentTarget)}
+                onLoad={(e) => {
+                  const frame = e.currentTarget;
+                  fitMailFrame(frame);
+                  bindMailClicks(frame, (href) => {
+                    void api("/api/open-url", { method: "POST", body: JSON.stringify({ url: href }) }).catch(
+                      () => undefined,
+                    );
+                  });
+                }}
               />
             ) : (
               <pre className="body">{selected.body}</pre>

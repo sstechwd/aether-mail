@@ -43,11 +43,20 @@ describe("sanitizeMailHtml", () => {
     expect(blocked.toLowerCase()).not.toContain("<iframe");
     expect(blocked).not.toContain("javascript:");
     expect(blocked).not.toContain("onerror");
-    expect(blocked).toContain("aether-open");
     expect(blocked).not.toMatch(/<img[^>]+https:\/\/evil\.example\/pixel\.gif/i);
     expect(blocked).toContain("data-blocked-src");
     const open = sanitizeMailHtml(RAW, { allowRemoteImages: true });
     expect(open).toContain("https://evil.example/pixel.gif");
     expect(open).not.toContain("alert(1)");
+  });
+
+  it("turns a linked blocked image into a clickable open-in-browser target", () => {
+    const raw =
+      '<a href="//shop.example/sale?utm=1&id=9"><img src="https://cdn.example/banner.png" alt="Sale"></a>';
+    const out = sanitizeMailHtml(raw, { allowRemoteImages: false });
+    expect(out).toContain("https://shop.example/sale");
+    expect(out).toContain("blocked-img");
+    expect(out).toMatch(/open in browser/i);
+    expect(out).not.toContain("alert(");
   });
 });

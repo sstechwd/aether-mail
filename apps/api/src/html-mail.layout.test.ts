@@ -54,7 +54,6 @@ describe("sanitizeMailHtml — layout", () => {
     const out = sanitizeMailHtml("<script>alert(1)</script><p>safe</p>", { allowRemoteImages: false });
     expect(out).not.toContain("alert(1)");
     expect(out).toContain("safe");
-    expect(out).toContain("aether-open");
   });
 
   it("still removes event handlers", () => {
@@ -87,7 +86,7 @@ describe("sanitizeMailHtml — layout", () => {
 
   it("keeps the CSP locked to no scripts and no frames", () => {
     const out = sanitizeMailHtml("<p>x</p>", { allowRemoteImages: false });
-    expect(out).toContain("script-src 'unsafe-inline'");
+    expect(out).toContain("script-src 'none'");
     expect(out).toContain("frame-src 'none'");
     expect(out).toContain("default-src 'none'");
   });

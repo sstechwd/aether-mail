@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeOpenUrl } from "./openurl.js";
+import { safeOpenUrl, windowsStartArgs } from "./openurl.js";
 
 describe("safeOpenUrl", () => {
   it("allows ordinary https and mailto", () => {
@@ -13,5 +13,17 @@ describe("safeOpenUrl", () => {
     expect(safeOpenUrl("file:///C:/Windows/notepad.exe")).toBe(false);
     expect(safeOpenUrl("https://user:pass@evil.example/")).toBe(false);
     expect(safeOpenUrl("")).toBe(false);
+  });
+});
+
+describe("windowsStartArgs", () => {
+  it("keeps tracking query strings with & as one start target", () => {
+    const url = "https://shop.example/buy?utm=1&id=2";
+    const args = windowsStartArgs(url);
+    expect(args[0]).toBe("/c");
+    expect(args.join(" ")).toContain("utm=1");
+    expect(args.join(" ")).toContain("id=2");
+    const urlArg = args[args.length - 1];
+    expect(urlArg.startsWith('"') || urlArg.includes("^&")).toBe(true);
   });
 });

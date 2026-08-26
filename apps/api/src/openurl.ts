@@ -36,10 +36,16 @@ export function mailOauthUrlOk(url: string): boolean {
   }
 }
 
+export function windowsStartArgs(url: string): string[] {
+  // cmd.exe splits on bare &. Newsletter links always have tracking queries.
+  const escaped = url.replace(/"/g, "").replace(/&/g, "^&");
+  return ["/c", "start", "", escaped];
+}
+
 export function openInOsBrowser(url: string): void {
   if (!safeOpenUrl(url) && !mailOauthUrlOk(url)) return;
   if (process.platform === "win32") {
-    execFile("cmd.exe", ["/c", "start", "", url], { windowsHide: true }, () => undefined);
+    execFile("cmd.exe", windowsStartArgs(url), { windowsHide: true }, () => undefined);
     return;
   }
   if (process.platform === "darwin") {
